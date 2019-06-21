@@ -16,37 +16,6 @@ require 'optparse'
 ##########################
 #METHODS
 ##########################
-
-def load_proteins_file(file, annotation_types)
-	protein_annotations = {}
-	proteins_without_annotations = []
-	annotation_types.each do |type| # initialize annotation hashes
-		protein_annotations[type] = {}
-	end
-	counter = 0
-	File.open(file).each do |line|
-		line.chomp!
-		if counter == 0
-			counter += 1
-			next
-		end
-		line.gsub!(' ', '')
-		fields = line.split("\t", 5)
-		protID = fields.shift
-		annotation_types.each_with_index do |type, i|
-			annotations = fields[i].split(/[;,]/)
-			if !annotations.empty?
-				protein_annotations[type][protID] = annotations
-			end
-			if fields.count("") == 4
-				proteins_without_annotations << protID
-			end
-		end
-		counter += 1
-	end
-	return protein_annotations, counter, proteins_without_annotations.uniq
-end
-
 def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein2gene)
 	records = Hash.new(0)
 	nomenclature_annotations.each do |nomenclature, protein_annotations|
@@ -78,6 +47,24 @@ def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein
 	return records
 end
 
+def generate_control_dataset(nomenclature_annotations, cath_data, filename)
+  control_dataset = {}
+  cath_data.each do |cathProtein, domains|
+    unless domains.empty?
+      nomenclature_annotations.each do |annotation_type, info|
+        funSys = info[cathProtein]
+        control_dataset[cathProtein] = funSys unless funSys.nil?
+      end
+    end
+  end
+  handler = File.open(filename, 'w')
+  control_dataset.each do |protein, funSys|
+    handler.puts "#{protein}\t#{funSys.join(';')}" 
+  end
+
+  handler.close
+end
+
 ##########################
 #OPT-PARSER
 ##########################
@@ -103,6 +90,11 @@ OptionParser.new do |opts|
   options[:search_domain] = true
   opts.on("-f", "--search_domain", "Search full protein domains. If false, search funfams") do
     options[:search_domain] = false
+  end
+
+  options[:output_control] = 'control_dataset.txt'
+  opts.on("-o", "--output_control PATH", "Output control dataset, with proteins that share domains and functions") do |data|
+    options[:output_control] = data
   end
 
   options[:annotation_types] = %w[ kegg reactome go]
@@ -154,3 +146,4 @@ proteins_without_annotations.each do |unnanotated_prot|
 	handler.puts unnanotated_prot
 end
 handler.close
+generate_control_dataset(nomenclature_annotations, cath_data, options[:output_control])
