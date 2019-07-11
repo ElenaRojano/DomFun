@@ -17,7 +17,16 @@ def load_proteins_file(file, annotation_types)
 		annotation_types.each_with_index do |type, i|
 			annotations = fields[i].split(/[;,]/)
 			if !annotations.empty?
-				protein_annotations[type][protID] = annotations
+				if type == 'gomf'
+					go_annotations = []
+					annotations.each do |go_term|
+						go_name, go_id = go_term.split('[')
+						go_annotations << go_id.tr(']', '') unless go_id.nil?	
+					end
+					protein_annotations[type][protID] = go_annotations
+				else
+					protein_annotations[type][protID] = annotations
+				end
 			end
 			if fields.count("") == 3
 				proteins_without_annotations << protID
@@ -25,6 +34,7 @@ def load_proteins_file(file, annotation_types)
 		end
 		counter += 1
 	end
+	# STDERR.puts protein_annotations.inspect
 	return protein_annotations, counter, proteins_without_annotations.uniq
 end
 
