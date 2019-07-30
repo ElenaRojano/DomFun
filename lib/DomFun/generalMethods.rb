@@ -20,8 +20,8 @@ def load_proteins_file(file, annotation_types)
 				if type == 'gomf'
 					go_annotations = []
 					annotations.each do |go_term|
-						go_name, go_id = go_term.split('[')
-						go_annotations << go_id.tr(']', '') unless go_id.nil?	
+						go_name, go_id = go_term.split('GO:')
+						go_annotations << "GO:".concat(go_id.tr(']', '')) unless go_id.nil?	
 					end
 					protein_annotations[type][protID] = go_annotations
 				else
@@ -34,7 +34,6 @@ def load_proteins_file(file, annotation_types)
 		end
 		counter += 1
 	end
-	# STDERR.puts protein_annotations.inspect
 	return protein_annotations, counter, proteins_without_annotations.uniq
 end
 
@@ -78,4 +77,24 @@ def add_term2dictionary(dict, key, term)
 	else
 		query << term
 	end
+end
+
+def load_cafa_data(cafa_file)
+	cafa_data = {}
+	File.open(cafa_file).each do |line|
+		line.chomp!
+		next if line.include?('GO_Ont')
+		cafa_info = line.split("\t")
+		next unless cafa_info[1] == 'MF'
+		go_term = cafa_info[4]
+		gene_name = cafa_info[6]
+		next if gene_name == 'NA'
+		query = cafa_data[gene_name]
+		if query.nil?
+			cafa_data[gene_name] = [go_term]
+		else
+			query << go_term
+		end
+	end
+	return cafa_data
 end
