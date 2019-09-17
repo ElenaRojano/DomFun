@@ -24,14 +24,10 @@ require 'report_html'
 ##########################
 
 def get_protein_domains(cath_data, protein)
-  # puts cath_data.inspect
-  # Process.exit
+  domains_to_predict = nil
   unless cath_data[protein].nil?
-    domains = cath_data[protein].uniq
-    domains_to_predict = [protein, domains] #unless cath_data[protein].nil?
+    domains_to_predict = cath_data[protein].uniq
   end
-  # STDERR.puts protein
-  # STDERR.puts domains_to_predict
   return domains_to_predict
 end
 
@@ -66,6 +62,7 @@ end
 def search4function(domains_to_predict, domain_to_pathway_associations)
   domain_to_function_and_association_value = {}
   domains_to_predict.each do |domain|
+    #puts domain
     associations = domain_to_pathway_associations[domain]
     if !associations.nil?
       domain_to_function_and_association_value[domain] = associations
@@ -117,8 +114,8 @@ def generate_domain_annotation_matrix(function_to_domains, association_scores, d
   return domain_annotation_matrix
 end
 
-def scoring_regions(function_to_domains, domain_annotation_matrix, scoring_system='fisher', freedom_degree='maxnum', null_value=0)
-  function_to_domains_array = function_to_domains.values
+def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system, freedom_degree='maxnum', null_value=0, pvalue_threshold)
+  domains_array = function_to_domains.values
   max_cluster_length = domain_annotation_matrix.map{|x| x.count {|i| i != 0}}.max if freedom_degree == 'maxnum'
   domain_annotation_matrix.each_with_index do |associations, i|
     sample_length = nil
@@ -134,8 +131,11 @@ def scoring_regions(function_to_domains, domain_annotation_matrix, scoring_syste
       lns = associations.map{|a| Math.log(10 ** -a)} #hyper values come as log10 values
       sum = lns.inject(0){|s, a| s + a} 
       combined_pvalue = Statistics2.chi2_x(sample_length *2, -2*sum)
-      function_to_domains_array[i] << combined_pvalue
+      domains_array[i] << combined_pvalue
     end
+  end
+  if scoring_system == 'fisher'
+    function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
   end
 end
 
@@ -169,6 +169,11 @@ OptionParser.new do |opts|
   options[:protein_domains_file] = nil
   opts.on("-f", "--protein_domains_file PATH", "Input protein-domains file from CATH") do |data|
     options[:protein_domains_file] = data
+  end
+
+  options[:integration_method] = 'fisher'
+  opts.on("-i", "--integration_method STRING", "Integration method") do |limit_show|
+    options[:integration_method] = limit_show.to_i
   end
 
   options[:limit_show] = 0
@@ -227,19 +232,19 @@ end.parse!
 ##########################
 #MAIN
 ##########################
-# 1. Load associations and domains data
+# 1. Load protein domains classification to get domains from proteins to predict
 cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category])
 # 2. Load protein(s) to predict
 if File.exist?(options[:proteins_2predict])
   if !options[:multiple_proteins]
     options[:proteins_2predict] = [File.open(options[:proteins_2predict]).readlines.map!{|line| line.chomp}]
   else
-    multiple_profiles = []
+    multiple_proteins = []
     File.open(options[:proteins_2predict]).each do |line|
       line.chomp!
-      multiple_profiles << line.split('|')
+      multiple_proteins << line
     end
-    options[:proteins_2predict] = multiple_profiles
+    options[:proteins_2predict] = multiple_proteins
   end
 else
   if !options[:multiple_proteins]
@@ -252,81 +257,28 @@ end
 
 # 3. Load domain-FunSys associations
 domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold])
-
-# 4. Prediction performance
-domains_per_protein = {}
-domains_without_FunSys = {}
+# 4. Prediction
 options[:proteins_2predict].each do |protein|
-  # STDERR.puts protein.join('').inspect
-  domains_to_predict = get_protein_domains(cath_data, protein.join(''))
-  unless domains_to_predict.nil?
-    null_value = 0
-    protein_id = domains_to_predict.shift
-    domains_to_predict.each do |domains|
-      # STDERR.puts domains.inspect
-      # STDERR.puts data.inspect
+  domains = get_protein_domains(cath_data, protein)
+  next if domains.nil?
+  null_value = 0
+  domain_function_assocValue = search4function(domains, domain_to_pathways_associations)
+  
+  function_to_domains, association_scores = group_by_function(domain_function_assocValue) 
+  annotation_matrix = generate_domain_annotation_matrix(function_to_domains, association_scores, domains, 0) 
+  
+  scoring_funsys(
+    function_to_domains, 
+    annotation_matrix, 
+    options[:integration_method], 
+    'maxnum', 
+    null_value, 
+    options[:pvalue_threshold]
+    )
 
-
-      # protein_id = domains.shift
-      # if domains.empty?
-      #   handler = File.open(options[:unknown_proteins], 'w')
-      #   handler.puts "Protein #{protein_id} has no domains found"
-      #   handler.close
-      # else     
-        domain_function_assocValue = search4function(domains, domain_to_pathways_associations)
-        # STDERR.puts domain_function_assocValue.inspect
-        domains_without_FunSys[protein_id] = domains if domain_function_assocValue.empty?
-          # handler = File.open(options[:output_file], 'w')
-          # handler.puts "Protein #{protein_id} with domains #{domain(s).join(', ')} were not found to be associated with any FunSys"
-          # handler.close
-        
-          #STDERR.puts domain_function_assocValue.inspect
-        function_to_domains, association_scores = group_by_function(domain_function_assocValue)
-        annotation_matrix = generate_domain_annotation_matrix(function_to_domains, association_scores, domains, 0)
-        scoring_regions(function_to_domains, annotation_matrix, 'fisher', 'maxnum', null_value)
-        predictions = []
-        # STDERR.puts function_to_domains.inspect
-        domains_group = []
-        domains_association_values = []
-        function_to_domains.each do |function, info|
-          combined_score = info.pop
-          function_domains_associated_and_value = association_scores[function]
-          info.each do |domain|
-            domains_association_values << function_domains_associated_and_value[domain]
-            domains_group << domain
-            # STDERR.puts domains_association_values.inspect
-          end
-          predictions << [protein_id, domains_group.join(', '), function, domains_association_values.map{|a| a.round(3)}.join(', '), combined_score] 
-          # STDERR.puts predictions.inspect
-          domains_association_values = []
-          domains_group = []
-        end
-        predictions.sort!{|r1, r2| r1.last <=> r2.last}
-        predictions.each do |info|
-          STDERR.puts info.inspect
-          puts info.join("\t")
-        end
-        # STDERR.puts predictions.inspect
-        # handler = File.open(options[:output_file], 'w')
-        # handler.puts "ProteinID\tDomains\tFunSys term\tAssociation values\tCombined score (P-value)"
-        # if options[:limit_show] == 0
-        #   predictions.each do |info|
-        #     handler.puts info.join("\t") if info.last <= options[:pvalue_thresold]
-        #   end
-        # else
-        #   predictions.each_with_index do |info, limit|
-        #     handler.puts info.join("\t") if info.last <= options[:pvalue_thresold]
-        #     break if limit == options[:limit_show] - 1
-        #   end
-        # end
-        # domains_without_FunSys.each do |protein, domains|
-        #   handler.puts "#{protein}\t#{domains.join(', ')}\t#{'-'}\t#{'-'}\t#{'-'}"
-        # end
-        # handler.close
-        # STDERR.puts predictions.inspect
-        report_data(predictions, options[:html_file]) if options[:html_reporting]
-      # end
-    end
+  function_to_domains.each do |funsys, domains_data|
+    score = domains_data.pop
+    puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
   end
 end
 
