@@ -124,7 +124,6 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
     else
       abort("Invalid freedom degree calculation method: #{freedom_degree}")
     end
-
     if scoring_system == 'fisher'
       #hyper must be ln not log10 from net analyzer
       #https://en.wikipedia.org/wiki/Fisher%27s_method
@@ -132,10 +131,18 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
       sum = lns.inject(0){|s, a| s + a} 
       combined_pvalue = Statistics2.chi2_x(sample_length *2, -2*sum)
       domains_array[i] << combined_pvalue
+    elsif scoring_system == 'stouffer'
+      sum = associations.inject(0){|s,x| s + x}      
+      combined_z_score = sum/Math.sqrt(sample_length)
+      domains_array[i] << combined_z_score
+    else
+      abort("Invalid integration method: #{scoring_system}")
     end
   end
   if scoring_system == 'fisher'
     function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
+  elsif scoring_system == 'stouffer'
+    function_to_domains.select!{|function, attributes| attributes.last >= pvalue_threshold}
   end
 end
 
@@ -172,13 +179,8 @@ OptionParser.new do |opts|
   end
 
   options[:integration_method] = 'fisher'
-  opts.on("-i", "--integration_method STRING", "Integration method") do |limit_show|
-    options[:integration_method] = limit_show.to_i
-  end
-
-  options[:limit_show] = 0
-  opts.on("-l", "--limit_show INTEGER", "Maximum number of predictions to show") do |limit_show|
-    options[:limit_show] = limit_show.to_i
+  opts.on("-i", "--integration_method STRING", "Integration method") do |data|
+    options[:integration_method] = data
   end
 
   options[:output_file] = 'predictions_file.txt'
@@ -193,28 +195,12 @@ OptionParser.new do |opts|
 
   options[:pvalue_threshold] = 0.05
   opts.on("-t", "--pvalue_threshold FLOAT", "P-value threshold") do |pvalue_threshold|
-    options[:pvalue_threshold] = best_threshold.to_f
+    options[:pvalue_threshold] = pvalue_threshold.to_f
   end
 
   options[:association_threshold] = 2
   opts.on("-T", "--association_threshold FLOAT", "Association value threshold") do |association_threshold|
     options[:association_threshold] = association_threshold.to_f
-  end
-
-
-  options[:html_file] = "DomFunPredictions.html"
-  opts.on("-R", "--html_file PATH", "HTML file with prediction summary") do |html_file|
-    options[:html_file] = html_file
-  end
-
-  options[:html_reporting] = false
-    opts.on("-r", "--html_reporting", "Set to generate an HTML report") do
-  options[:html_reporting] = true
-  end
-
-  options[:unknown_proteins] = 'unknown_proteins_list.txt'
-  opts.on("-U", "--unknown_proteins PATH", "List of proteins not found in the system") do |data|
-    options[:unknown_proteins] = data
   end
 
   options[:multiple_proteins] = false
@@ -275,6 +261,8 @@ options[:proteins_2predict].each do |protein|
     null_value, 
     options[:pvalue_threshold]
     )
+
+  #STDERR.puts function_to_domains.inspect
 
   function_to_domains.each do |funsys, domains_data|
     score = domains_data.pop
