@@ -6,6 +6,7 @@ require 'optparse'
 ## METHODS
 #################################
 def load_pairs(file, key)
+	STDERR.puts key
 	pairsA = {}
 	pairsB = {}
 	File.open(file).each do |line|

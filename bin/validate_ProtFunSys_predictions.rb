@@ -28,7 +28,7 @@ def load_predictions_file(predictions_file)
 	File.open(predictions_file).each do |line|
 		line.chomp!
 		next if line.include?('ProteinID')
-		protein, domains, funSys, assocVal, combinedScore = line.split("\t")
+		protein, domains, funSys, combinedScore = line.split("\t")
 		query = predictions[protein]
 		if query.nil?
 			predictions[protein] = [funSys]

@@ -135,15 +135,23 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
       sum = associations.inject(0){|s,x| s + x}      
       combined_z_score = sum/Math.sqrt(sample_length)
       domains_array[i] << combined_z_score
+    elsif scoring_system == 'average'
+      sum = associations.inject(0){|s,x| s + x.abs}.fdiv(associations.length)
+      #STDERR.puts sum.inspect
+      domains_array[i] << sum
+    elsif scoring_system == 'sum'
+      sum = associations.inject(0){|s,x| s + x.abs}
+      domains_array[i] << sum
     else
       abort("Invalid integration method: #{scoring_system}")
     end
   end
   if scoring_system == 'fisher'
     function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
-  elsif scoring_system == 'stouffer'
+  else
     function_to_domains.select!{|function, attributes| attributes.last >= pvalue_threshold}
   end
+  #STDERR.puts function_to_domains.inspect
 end
 
 
@@ -218,6 +226,7 @@ end.parse!
 ##########################
 #MAIN
 ##########################
+
 # 1. Load protein domains classification to get domains from proteins to predict
 cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category])
 # 2. Load protein(s) to predict
@@ -261,8 +270,6 @@ options[:proteins_2predict].each do |protein|
     null_value, 
     options[:pvalue_threshold]
     )
-
-  #STDERR.puts function_to_domains.inspect
 
   function_to_domains.each do |funsys, domains_data|
     score = domains_data.pop

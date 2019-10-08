@@ -31,12 +31,13 @@ end
 ##########################
 #METHODS
 #########################
+# Corregir el input de combined scores
 
 def load_predictions(input_file)
 	predictions = {}
 	File.open(input_file).each do |line|
 		line.chomp! 
-    proteinID, domains, go_term, association_values, p_value = line.split("\t")	
+    proteinID, domains, go_term, p_value = line.split("\t")	
     query = predictions[proteinID]
     if query.nil?
       predictions[proteinID] = [[go_term, p_value.to_f]]
@@ -57,8 +58,7 @@ def translate_protein_ids(cafa_file, predictions)
     go_associations = predictions[proteinID]
     unless go_associations.nil?
       go_associations.each do |goID, value|
-        # 1 - value to invert P-values
-        cafa_predictions << [cafaID, goID, 1 - value]
+        cafa_predictions << [cafaID, goID, value]
       end
     end 
   end

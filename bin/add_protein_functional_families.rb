@@ -18,19 +18,22 @@ require 'optparse'
 ##########################
 def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein2gene)
 	records = Hash.new(0)
-	nomenclature_annotations.each do |nomenclature, protein_annotations|
+  nomenclature_annotations.each do |nomenclature, protein_annotations|
 		annots = []
 		datas = []
 		protein_annotations.each do |protID, annotations|
 			query_cath_data = cath_data[protID]
 			if !query_cath_data.nil?
-				gene_ID = protein2gene[protID]
-				gene_ID = protID if gene_ID.nil?
+				#gene_ID = protein2gene[protID] unless protein2gene[protID].nil?
+        
+				#gene_ID = protID if gene_ID.nil?
 				annotations.each do |annotation|
-					annots << [annotation, gene_ID]
+          #annots << [annotation, gene_ID]
+					annots << [annotation, protID]
 				end
 				query_cath_data.each do |data|
-					datas << [data, gene_ID]
+          #datas << [data, gene_ID]
+					datas << [data, protID]
 				end
 			end
 		end

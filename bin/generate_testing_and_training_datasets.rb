@@ -124,8 +124,12 @@ OptionParser.new do |opts|
 		opts.on("-C", "--cath_file PATH", "CATH file to get protein domains") do |data|
 		options[:cath_file] = data
 	end
-
 	
+	options[:domain_class] = 'funfamID'
+		opts.on("-d", "--targets_file STRING", "Domain identifiers type. Please choose funfamID or superfamilyID") do |data|
+		options[:domain_class] = data
+	end
+
 	options[:targets_file] = nil
 		opts.on("-g", "--targets_file PATH", "CAFA2 and genename ids from FASTA files") do |data|
 		options[:targets_file] = data
@@ -170,6 +174,6 @@ training_proteinIDs, untranslated_proteinIDs_list = translate_genename2proteinId
 proteins_go_t0 = load_protein_go_file(options[:proteins_go])
 training_proteins = get_go_from_proteins(training_proteinIDs, proteins_go_t0)
 
-cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:cath_file], 'funfamID')
+cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:cath_file], options[:domain_class])
 
 build_tripartite_network(cath_data, training_proteins, options[:output_network])
