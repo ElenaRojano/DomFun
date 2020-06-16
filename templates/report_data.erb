@@ -1,0 +1,59 @@
+<div class="chunk">
+	<style type="text/css" scoped>	
+	.tooltip {
+    position: relative;
+    display: inline-block;
+    border-bottom: 1px dotted black;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 120px;
+    background-color: #555;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 0;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -60px;
+    opacity: 0;
+    transition: opacity 1s;
+}
+
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #555 transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+	</style>
+</div>
+
+<div>
+<h2 style="text-align: center; background-color:#d6eaf8">Ranked FunSys predicted based on queried protein domains</h2>
+<p>The following table shows the protein domains, the FunSys associated, the association value calculated between the domain and the FunSys and the combined scored. Results are ranked from the highest to the lowest combined score.</p>
+	<%= 
+	if !@hash_vars[:predictions].nil?
+		# gene_var = @hash_vars[:genes_with_kegg_data]
+		table(id: :predictions, header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+		predictions = @hash_vars[:predictions]
+		# data.each_with_index do |row, row_number|
+		data.unshift(["ProteinID", "Domains", "FunSys", "Association values", "Combined score"])
+		end
+	end
+	%>
+
+</div>
