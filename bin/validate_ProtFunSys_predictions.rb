@@ -12,11 +12,9 @@ REPORT_FOLDER=File.expand_path(File.join(File.dirname(__FILE__), '..', 'template
 ROOT_PATH = File.dirname(__FILE__)
 $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
 require 'generalMethods.rb'
-require 'csv'
 require 'optparse'
 require "statistics2"
-require "terminal-table"
-require 'report_html'
+require 'bigdecimal'
 
 
 ##########################
@@ -24,17 +22,12 @@ require 'report_html'
 ##########################
 
 def load_predictions_file(predictions_file)
-	predictions = {}
+	predictions = []
 	File.open(predictions_file).each do |line|
 		line.chomp!
 		next if line.include?('ProteinID')
 		protein, domains, funSys, combinedScore = line.split("\t")
-		query = predictions[protein]
-		if query.nil?
-			predictions[protein] = [funSys]
-		else
-			query << funSys
-		end
+		predictions << [protein, funSys, combinedScore.to_f]
 	end
 	return predictions
 end
@@ -49,6 +42,84 @@ def load_control_file(control_file)
 	return control_protein_FunSys
 end
 
+def load_prediction(pairs_array)
+	pred = {}
+	min = nil
+	max = nil
+	pairs_array.each do |key, label, score| #protein, FunSys, assocScore
+		query = pred[key]
+		if !min.nil? && !max.nil?
+			min = score if score < min
+			max = score if score > max
+		else
+			min = score; max = score
+		end
+		if query.nil?
+			pred[key] = [[label], [score]]
+		else
+			query.first << label
+			query.last << score
+		end
+	end
+	return pred, [min, max]
+end
+
+
+# Pandey 2007, Association Analysis-based Transformations for Protein Interaction Networks: A Function Prediction Case Study
+def get_pred_rec(meth, cut_number = 100, top_number = 10000, control_protein_FunSys, predictions)
+	performance = [] #cut, pred, rec
+	preds, limits = load_prediction(predictions)
+	cuts = get_cuts(limits, cut_number)
+	cuts.each do |cut|
+		prec, rec = pred_rec(preds, cut, top_number, control_protein_FunSys)
+		performance << [cut, prec, rec]
+	end
+	return performance
+end
+
+def pred_rec(preds, cut, top, control_protein_FunSys)
+	predicted_labels = 0 #m
+	true_labels = 0 #n
+	common_labels = 0 # k
+	control_protein_FunSys.each do |key, c_labels|
+		true_labels += c_labels.length #n
+		pred_info = preds[key]
+		if !pred_info.nil?
+			labels, scores = pred_info
+			reliable_labels = get_reliable_labels(labels, scores, cut, top)
+			predicted_labels += reliable_labels.length #m
+			common_labels += (c_labels & reliable_labels).length #k
+		end
+	end
+	#puts "cut: #{cut} trueL: #{true_labels} predL: #{predicted_labels} commL: #{common_labels}"
+	prec = common_labels.to_f/predicted_labels
+	rec = common_labels.to_f/true_labels
+	prec = 0.0 if prec.nan?
+	rec = 0.0 if rec.nan?
+	return prec, rec
+end
+
+def get_cuts(limits, n_cuts)
+	cuts = []
+	range = (limits.last - limits.first).abs.fdiv(n_cuts)
+	range = BigDecimal(range, 10)
+	cut = limits.first
+	(n_cuts + 1).times do |n|
+		cuts << (cut + n * range).to_f
+	end
+	return cuts
+end
+
+def get_reliable_labels(labels, scores, cut, top)
+	reliable_labels = []
+	scores.each_with_index do |score, i|
+		reliable_labels << [labels[i], score] if score >= cut
+	end
+	reliable_labels = reliable_labels.sort!{|l1,l2| l2.last <=> l1.last}[0..top-1].map{|pred| pred.first}
+	return reliable_labels
+end
+
+
 ##########################
 #OPT-PARSER
 ##########################
@@ -58,19 +129,29 @@ OptionParser.new do |opts|
   opts.banner = "Usage: #{__FILE__} [options]"
   
 	options[:input_predictions] = nil
-	opts.on("-a", "--input_predictions PATH", "Domain-function predictions") do |data|
-	options[:input_predictions] = data
+		opts.on("-a", "--input_predictions PATH", "Domain-function predictions") do |data|
+		options[:input_predictions] = data
 	end
 
 	options[:control_file] = nil
-	opts.on("-c", "--control_file PATH", "Control dataset with proteins-FunSys from UniProtKB") do |data|
-	options[:control_file] = data
+		opts.on("-c", "--control_file PATH", "Control dataset with proteins-FunSys from UniProtKB") do |data|
+		options[:control_file] = data
+	end
+
+	options[:assoc_meth] = nil
+		opts.on("-m", "--assoc_meth STRING", "Association method used") do |data|
+		options[:assoc_meth] = data
+	end
+	
+	options[:performance_file] = 'precision_recall.txt'
+	opts.on("-p", "--performance_file PATH", "Output file with PR values") do |data|
+	options[:performance_file] = data
 	end
 
 	opts.on_tail("-h", "--help", "Show this message") do
-	puts opts
-	exit
-  end
+		puts opts
+		exit
+	end
 
 end.parse!
 
@@ -78,25 +159,16 @@ end.parse!
 #MAIN
 ##########################
 
-domains_FunSys_predictions = load_predictions_file(options[:input_predictions])
 control_protein_FunSys = load_control_file(options[:control_file])
 
-# domains_FunSys_predictions.keys.inspect
-number_of_predicted_FunSys = 0
-number_of_FunSys_per_protein = 0
-number_of_shared_FunSys = 0
-control_protein_FunSys.each do |protein, funSys|
-	predicted_FunSys = domains_FunSys_predictions[protein]
-	number_of_FunSys_per_protein += funSys.length
-	unless predicted_FunSys.nil?
-		number_of_predicted_FunSys += predicted_FunSys.length
-		if !predicted_FunSys.nil?
-			commonFunsys = predicted_FunSys & funSys
-			number_of_shared_FunSys += commonFunsys.length
-		end
+domains_FunSys_predictions = load_predictions_file(options[:input_predictions])
+
+performance = get_pred_rec(options[:assoc_meth], 100, 10000, control_protein_FunSys, domains_FunSys_predictions)
+
+File.open(options[:performance_file], 'w') do |f|
+	f.puts %w[cut prec rec meth].join("\t")
+	performance.each do |item|
+		item << options[:assoc_meth].to_s
+		f.puts item.join("\t")
 	end
 end
-precision = number_of_shared_FunSys.fdiv(number_of_predicted_FunSys)
-STDERR.puts precision
-recall = number_of_shared_FunSys.fdiv(number_of_FunSys_per_protein)
-STDERR.puts recall

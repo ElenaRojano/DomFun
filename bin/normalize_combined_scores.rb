@@ -82,7 +82,6 @@ predictions_data = load_predictions(options[:input_file])
 standardized_data = []
 
 if options[:integration_method] == 'fisher'
-	#STDERR.puts "HI THERE!"
 	predictions_data.each do |protID, domains, funSys, combScore|
 		stdScore = 1 - combScore
 		#CAFA validation score must be in range (0,1]

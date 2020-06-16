@@ -9,14 +9,15 @@
 REPORT_FOLDER=File.expand_path(File.join(File.dirname(__FILE__), '..', 'templates'))
 ROOT_PATH = File.dirname(__FILE__)
 $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
-require 'generalMethods.rb'
+require 'generalMethods'
 require 'csv'
 require 'optparse'
+require 'fileutils'
 
 ##########################
 #METHODS
 ##########################
-def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein2gene)
+def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein2gene, translate2gene)
 	records = Hash.new(0)
   nomenclature_annotations.each do |nomenclature, protein_annotations|
 		annots = []
@@ -24,16 +25,17 @@ def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein
 		protein_annotations.each do |protID, annotations|
 			query_cath_data = cath_data[protID]
 			if !query_cath_data.nil?
-				#gene_ID = protein2gene[protID] unless protein2gene[protID].nil?
-        
-				#gene_ID = protID if gene_ID.nil?
+        if !translate2gene
+          recordID = protID
+        else
+  				recordID = protein2gene[protID]
+  				recordID = protID if recordID.nil?
+        end
 				annotations.each do |annotation|
-          #annots << [annotation, gene_ID]
-					annots << [annotation, protID]
+					annots << [annotation, recordID]
 				end
 				query_cath_data.each do |data|
-          #datas << [data, gene_ID]
-					datas << [data, protID]
+					datas << [data, recordID]
 				end
 			end
 		end
@@ -77,6 +79,11 @@ OptionParser.new do |opts|
     options[:search_domain] = false
   end
 
+  options[:output_file] = 'uniprot_translated.txt'
+  opts.on("-o", "--output_file PATH", "Output file with UniProt GeneName structure for prediction") do |data|
+    options[:output_file] = data
+  end
+
   options[:annotation_types] = %w[ kegg reactome go]
   opts.on("-p", "--annotation_types STRING", "List of annotation types separated by commas") do |data|
     options[:annotation_types] = data.split(",")
@@ -85,6 +92,11 @@ OptionParser.new do |opts|
   options[:output_stats] = 'uniprot_stats.txt'
   opts.on("-s", "--output_stats PATH", "Output file with UniProt stats") do |data|
     options[:output_stats] = data
+  end
+
+  options[:translate2gene] = false
+  opts.on("-T", "--translate2gene", "Translate proteins to genes") do
+    options[:translate2gene] = true
   end
 
   options[:category_type] = 'funfamID'
@@ -109,25 +121,24 @@ end.parse!
 ##########################
 
 puts "Loading data..."
-cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:input_domains], options[:category_type])
+cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:input_domains], options[:category_type])
 nomenclature_annotations, number_of_proteins, proteins_without_annotations = load_proteins_file(options[:input_annotations], options[:annotation_types])
+
 networks_path = nil
 if options[:category_type] == 'funfamID'
 	networks_path = 'networks/funfam_networks'
 else
 	networks_path = 'networks/superfamily_networks'
 end
+FileUtils.mkdir_p networks_path
 puts "Generating tripartite networks. This can take a while, please wait."
-protein_stats = build_tripartite_networks(nomenclature_annotations, cath_data, networks_path, protein2gene)
-handler = File.open(options[:output_stats], 'w')
-protein_stats.each do |annotation_type, number_of_proteins|
-	handler.puts "#{annotation_type}\t#{number_of_proteins}"
+protein_stats = build_tripartite_networks(nomenclature_annotations, cath_data, networks_path, protein2gene, options[:translate2gene])
+File.open(options[:output_stats], 'w') do |f|
+  protein_stats.each do |annotation_type, number_of_proteins|
+  	f.puts "#{annotation_type}\t#{number_of_proteins}"
+  end
+  f.puts "Total of Uniprot proteins\t#{number_of_proteins}"
+  f.puts "Total of Uniprot proteins without annotations\t#{proteins_without_annotations.length}"
+  f.puts "Total of CATH proteins\t#{cath_proteins_number}"
 end
-handler.puts "Total of Uniprot proteins\t#{number_of_proteins}"
-handler.puts "Total of Uniprot proteins without annotations\t#{proteins_without_annotations.length}"
-handler.puts "Total of CATH proteins\t#{cath_proteins_number}"
-handler = File.open(options[:unnanotated_proteins], 'w')
-proteins_without_annotations.each do |unnanotated_prot|
-	handler.puts unnanotated_prot
-end
-handler.close
+File.open(options[:unnanotated_proteins], 'w') {|f| f.puts proteins_without_annotations.join("\n")}

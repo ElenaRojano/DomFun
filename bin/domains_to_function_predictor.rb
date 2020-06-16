@@ -11,7 +11,7 @@
 REPORT_FOLDER=File.expand_path(File.join(File.dirname(__FILE__), '..', 'templates'))
 ROOT_PATH = File.dirname(__FILE__)
 $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
-require 'generalMethods.rb'
+require 'generalMethods'
 require 'csv'
 require 'optparse'
 require "statistics2"
@@ -23,14 +23,23 @@ require 'report_html'
 #METHODS
 ##########################
 
-def get_protein_domains(cath_data, protein)
-  domains_to_predict = nil
-  unless cath_data[protein].nil?
-    domains_to_predict = cath_data[protein].uniq
+def get_protein_domains(cath_data, protein, gene2protein, identifier_mode)
+  domains_to_predict = []
+  if identifier_mode == 'mixed'
+    proteins = gene2protein[protein]
+    if !proteins.nil?
+      proteins.each do |protein|
+        domains_to_predict.concat(cath_data[protein])
+      end
+    else
+      domains_to_predict = cath_data[protein]
+    end
+  else
+    domains_to_predict = cath_data[protein]
   end
-  return domains_to_predict
+  domains_to_predict = [] if domains_to_predict.nil?
+  return domains_to_predict.uniq
 end
-
 
 def load_domain_to_pathway_association(associations_file, threshold)
 	domain_to_pathway_associations = {}
@@ -62,7 +71,6 @@ end
 def search4function(domains_to_predict, domain_to_pathway_associations)
   domain_to_function_and_association_value = {}
   domains_to_predict.each do |domain|
-    #puts domain
     associations = domain_to_pathway_associations[domain]
     if !associations.nil?
       domain_to_function_and_association_value[domain] = associations
@@ -131,13 +139,18 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
       sum = lns.inject(0){|s, a| s + a} 
       combined_pvalue = Statistics2.chi2_x(sample_length *2, -2*sum)
       domains_array[i] << combined_pvalue
+    elsif scoring_system == 'harmonic'
+      lns = associations.map{|a| 10 ** -a}
+      inv = lns.map{|n| 1.fdiv(n)}
+      sum = inv.inject(0){|s,x| s + x}
+      combined_pvalue = associations.length.fdiv(sum)
+      domains_array[i] << combined_pvalue
     elsif scoring_system == 'stouffer'
       sum = associations.inject(0){|s,x| s + x}      
       combined_z_score = sum/Math.sqrt(sample_length)
       domains_array[i] << combined_z_score
     elsif scoring_system == 'average'
       sum = associations.inject(0){|s,x| s + x.abs}.fdiv(associations.length)
-      #STDERR.puts sum.inspect
       domains_array[i] << sum
     elsif scoring_system == 'sum'
       sum = associations.inject(0){|s,x| s + x.abs}
@@ -146,12 +159,11 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
       abort("Invalid integration method: #{scoring_system}")
     end
   end
-  if scoring_system == 'fisher'
+  if scoring_system == 'fisher' || scoring_system == 'harmonic'
     function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
   else
     function_to_domains.select!{|function, attributes| attributes.last >= pvalue_threshold}
   end
-  #STDERR.puts function_to_domains.inspect
 end
 
 
@@ -191,6 +203,11 @@ OptionParser.new do |opts|
     options[:integration_method] = data
   end
 
+  options[:identifier_mode] = 'normal'
+  opts.on("-I", "--identifier_mode STRING", "Identifier mode: normal or mixed") do |data|
+    options[:identifier_mode] = data
+  end
+
   options[:output_file] = 'predictions_file.txt'
   opts.on("-o", "--output_file PATH", "Predictions file") do |data|
     options[:output_file] = data
@@ -228,7 +245,7 @@ end.parse!
 ##########################
 
 # 1. Load protein domains classification to get domains from proteins to predict
-cath_data, protein2gene, gene2proteins, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category])
+cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category])
 # 2. Load protein(s) to predict
 if File.exist?(options[:proteins_2predict])
   if !options[:multiple_proteins]
@@ -249,16 +266,16 @@ else
   end
 end
 
-
 # 3. Load domain-FunSys associations
 domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold])
 # 4. Prediction
+#handler = File.open(options[:output_file], 'w')
+gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'
 options[:proteins_2predict].each do |protein|
-  domains = get_protein_domains(cath_data, protein)
-  next if domains.nil?
+  domains = get_protein_domains(cath_data, protein, gene2protein, options[:identifier_mode])
+  next if domains.empty?
   null_value = 0
   domain_function_assocValue = search4function(domains, domain_to_pathways_associations)
-  
   function_to_domains, association_scores = group_by_function(domain_function_assocValue) 
   annotation_matrix = generate_domain_annotation_matrix(function_to_domains, association_scores, domains, 0) 
   
@@ -271,11 +288,10 @@ options[:proteins_2predict].each do |protein|
     options[:pvalue_threshold]
     )
 
-  function_to_domains.each do |funsys, domains_data|
-    score = domains_data.pop
-    puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
-  end
+    function_to_domains.each do |funsys, domains_data|
+      score = domains_data.pop
+      #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
+      puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
+    end
 end
-
-
-
+#handler.close

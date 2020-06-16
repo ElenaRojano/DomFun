@@ -4,6 +4,7 @@ def load_proteins_file(file, annotation_types)
 	annotation_types.each do |type| # initialize annotation hashes
 		protein_annotations[type] = {}
 	end
+	fields_to_split = annotation_types.length 
 	counter = 0
 	File.open(file).each do |line|
 		line.chomp!
@@ -12,12 +13,12 @@ def load_proteins_file(file, annotation_types)
 			next
 		end
 		line.gsub!(' ', '')
-		fields = line.split("\t", 4)
+		fields = line.split("\t", fields_to_split + 1)
 		protID = fields.shift
 		annotation_types.each_with_index do |type, i|
 			annotations = fields[i].split(/[;,]/)
 			if !annotations.empty?
-				if type == 'gomf'
+				if type.include?('go')
 					go_annotations = []
 					annotations.each do |go_term|
 						go_name, go_id = go_term.split('GO:')
@@ -28,7 +29,7 @@ def load_proteins_file(file, annotation_types)
 					protein_annotations[type][protID] = annotations
 				end
 			end
-			if fields.count("") == 3
+			if fields.count("") == fields_to_split
 				proteins_without_annotations << protID
 			end
 		end
@@ -37,18 +38,22 @@ def load_proteins_file(file, annotation_types)
 	return protein_annotations, counter, proteins_without_annotations.uniq
 end
 
-def load_cath_data(file, category)
+def load_cath_data(file, category, dictionary_key='gene_name')
+	if dictionary_key == 'gene_name'
+		field = 3
+	elsif dictionary_key == 'geneID' # UNIPROT entry_name
+		field = 4
+	end
 	cath_data = {}
-	protein2gene = {}
-	gene2proteins = {}
+	protein2gene_dict = {}
 	csv_file = CSV.read(file, { :col_sep => "\t" })
 	csv_file.delete_at(0)
 	csv_file.each do |protein_domains_data|
 		next if protein_domains_data.empty?
 		protein_id = protein_domains_data[0]
-		gene_name = protein_domains_data[3]
-		next if gene_name.include?('fusion')
-		gene_name = gene_name.gsub(' ', '_') if gene_name.include?(' ')
+		protein_alternative_name = protein_domains_data[field]
+		next if protein_domains_data[3].include?('fusion') # Only can checked in cath gene name field
+		protein_alternative_name.gsub!(' ', '_') if protein_alternative_name.include?(' ')
 		superfamilyID = protein_domains_data[5]
 		funfamID = protein_domains_data[6]
 		term2save = nil
@@ -58,16 +63,23 @@ def load_cath_data(file, category)
 			term2save = funfamID
 		end
 		add_term2dictionary(cath_data, protein_id, term2save)
-		protein2gene[protein_id] = gene_name if gene_name != 'NULL'
-		query = gene2proteins[gene_name]
-	    if query.nil?
-	      	gene2proteins[gene_name] = [protein_id] if protein_id != 'NULL'
-	    else
-	      query << protein_id if protein_id != 'NULL'
-		end
+		protein2gene_dict[protein_id] = protein_alternative_name if protein_alternative_name != 'NULL'
 	end
 	cath_proteins_number = cath_data.keys.length
-	return cath_data, protein2gene, gene2proteins, cath_proteins_number
+	return cath_data, protein2gene_dict, cath_proteins_number
+end
+
+def invert_hash(hash)
+	new_hash = {}
+	hash.each do |k, v|
+		query = new_hash[v]
+		if query.nil?
+			new_hash[v] = [k]
+		else
+			query << k
+		end
+	end
+	return new_hash
 end
 
 def add_term2dictionary(dict, key, term)
