@@ -39,6 +39,11 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "bundler", "~> 2.0"
   spec.add_development_dependency "rake", "~> 12.3.1"
   spec.add_development_dependency "rspec", "~> 3.0"
-
+  
   spec.add_dependency "NetAnalyzer", "~> 0.1.5"
+  spec.add_dependency "statistics2", ">= 0.54"
+  spec.add_dependency "terminal-table", ">= 2.0.0"
+  spec.add_dependency "report_html", ">= 0.4.3"
+	
+
 end
