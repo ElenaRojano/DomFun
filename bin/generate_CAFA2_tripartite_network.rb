@@ -17,22 +17,6 @@ require 'csv'
 #METHODS
 ##########################
 
-def load_hash(filename, mode)
-	container = {}
-	File.open(filename).each do |line|
-		line.chomp!
-		key, value = line.split("\t") if mode == 'a'
-		value, key = line.split("\t") if mode == 'b'
-		query = container[key]
-		if query.nil?
-			container[key] = [value]
-		else
-			query << value
-		end
-	end
-	return container
-end
-
 def build_tripartite_network(domain_tuples, annot_tuples, filename)
 	handler = File.open(filename, 'w')
 	annot_tuples.each do |protID, annots|

@@ -46,11 +46,12 @@ def load_cath_data(file, category, dictionary_key='gene_name')
 	end
 	cath_data = {}
 	protein2gene_dict = {}
-	csv_file = CSV.read(file, { :col_sep => "\t" })
-	csv_file.delete_at(0)
+	csv_file = CSV.open(file, :col_sep => "\t" )
+	header = true
 	csv_file.each do |protein_domains_data|
+		header = false; next  if header
 		next if protein_domains_data.empty?
-		protein_id = protein_domains_data[0]
+		protein_id = protein_domains_data[0].to_sym
 		protein_alternative_name = protein_domains_data[field]
 		next if protein_domains_data[3].include?('fusion') # Only can checked in cath gene name field
 		protein_alternative_name.gsub!(' ', '_') if protein_alternative_name.include?(' ')
@@ -109,4 +110,20 @@ def load_cafa_data(cafa_file)
 		end
 	end
 	return cafa_data
+end
+
+def load_hash(filename, mode)
+	container = {}
+	File.open(filename).each do |line|
+		line.chomp!
+		key, value = line.split("\t") if mode == 'a'
+		value, key = line.split("\t") if mode == 'b'
+		query = container[key]
+		if query.nil?
+			container[key] = [value]
+		else
+			query << value
+		end
+	end
+	return container
 end

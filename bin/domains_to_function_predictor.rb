@@ -17,7 +17,7 @@ require 'optparse'
 require "statistics2"
 require "terminal-table"
 require 'report_html'
-
+require 'parallel'
 
 ##########################
 #METHODS
@@ -218,10 +218,16 @@ OptionParser.new do |opts|
     options[:proteins_2predict] = data
   end
 
+  options[:threads] = 0
+  opts.on("-P", "--threads INTEGER", "Number of threads to parallelize") do |data|
+    options[:threads] = data.to_i - 1
+  end
+
   options[:pvalue_threshold] = 0.05
   opts.on("-t", "--pvalue_threshold FLOAT", "P-value threshold") do |pvalue_threshold|
     options[:pvalue_threshold] = pvalue_threshold.to_f
   end
+
 
   options[:association_threshold] = 2
   opts.on("-T", "--association_threshold FLOAT", "Association value threshold") do |association_threshold|
@@ -271,27 +277,42 @@ domain_to_pathways_associations = load_domain_to_pathway_association(options[:in
 # 4. Prediction
 #handler = File.open(options[:output_file], 'w')
 gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'
-options[:proteins_2predict].each do |protein|
-  domains = get_protein_domains(cath_data, protein, gene2protein, options[:identifier_mode])
-  next if domains.empty?
-  null_value = 0
-  domain_function_assocValue = search4function(domains, domain_to_pathways_associations)
-  function_to_domains, association_scores = group_by_function(domain_function_assocValue) 
-  annotation_matrix = generate_domain_annotation_matrix(function_to_domains, association_scores, domains, 0) 
-  
-  scoring_funsys(
-    function_to_domains, 
-    annotation_matrix, 
-    options[:integration_method], 
-    'maxnum', 
-    null_value, 
-    options[:pvalue_threshold]
-    )
+all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[:threads]) do |protein|
+  domains = get_protein_domains(cath_data, protein.to_sym, gene2protein, options[:identifier_mode])
+  if domains.empty?
+    nil
+  else
+    null_value = 0
+    domain_function_assocValue = search4function(domains, domain_to_pathways_associations)
+    function_to_domains, association_scores = group_by_function(domain_function_assocValue) 
+    annotation_matrix = generate_domain_annotation_matrix(function_to_domains, association_scores, domains, 0) 
+    
+    scoring_funsys(
+      function_to_domains, 
+      annotation_matrix, 
+      options[:integration_method], 
+      'maxnum', 
+      null_value, 
+      options[:pvalue_threshold]
+      )
 
-    function_to_domains.each do |funsys, domains_data|
-      score = domains_data.pop
-      #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
-      puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
+      final_predictions = []
+      function_to_domains.each do |funsys, domains_data|
+        score = domains_data.pop
+        #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
+        final_predictions << [protein, domains_data.join(','), funsys, score]
+      end
+      final_predictions
     end
 end
+all_predictions.each do |protein_predictions|
+  unless protein_predictions.nil?
+    protein_predictions.each do |info|
+      puts info.join("\t")
+    end
+  end
+end
+ #<< "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
+
+
 #handler.close
