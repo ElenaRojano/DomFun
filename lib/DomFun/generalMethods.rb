@@ -38,7 +38,7 @@ def load_proteins_file(file, annotation_types)
 	return protein_annotations, counter, proteins_without_annotations.uniq
 end
 
-def load_cath_data(file, category, dictionary_key='gene_name')
+def load_cath_data(file, category, dictionary_key='gene_name', whitelist=nil)
 	if dictionary_key == 'gene_name'
 		field = 3
 	elsif dictionary_key == 'geneID' # UNIPROT entry_name
@@ -52,8 +52,9 @@ def load_cath_data(file, category, dictionary_key='gene_name')
 		header = false; next  if header
 		next if protein_domains_data.empty?
 		protein_id = protein_domains_data[0].to_sym
-		protein_alternative_name = protein_domains_data[field]
+		next if !whitelist.nil? && whitelist[protein_id].nil?
 		next if protein_domains_data[3].include?('fusion') # Only can checked in cath gene name field
+		protein_alternative_name = protein_domains_data[field]
 		protein_alternative_name.gsub!(' ', '_') if protein_alternative_name.include?(' ')
 		superfamilyID = protein_domains_data[5]
 		funfamID = protein_domains_data[6]

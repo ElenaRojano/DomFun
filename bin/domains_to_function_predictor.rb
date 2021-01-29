@@ -41,11 +41,12 @@ def get_protein_domains(cath_data, protein, gene2protein, identifier_mode)
   return domains_to_predict.uniq
 end
 
-def load_domain_to_pathway_association(associations_file, threshold)
+def load_domain_to_pathway_association(associations_file, threshold, white_list=nil)
 	domain_to_pathway_associations = {}
 	File.open(associations_file).each do |line|
 		line.chomp!
 		annotation, domain, association_value = line.split("\t")
+    next if !white_list.nil? && white_list[domain].nil?
     association_value = association_value.to_f
 		next if association_value < threshold
     query = domain_to_pathway_associations[domain]
@@ -250,35 +251,47 @@ end.parse!
 #MAIN
 ##########################
 
-# 1. Load protein domains classification to get domains from proteins to predict
-cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category])
-# 2. Load protein(s) to predict
+# 1. Load protein(s) to predict
 if File.exist?(options[:proteins_2predict])
   if !options[:multiple_proteins]
-    options[:proteins_2predict] = [File.open(options[:proteins_2predict]).readlines.map!{|line| line.chomp}]
+    options[:proteins_2predict] = [File.open(options[:proteins_2predict]).readlines.map!{|line| line.chomp.to_sym}]
   else
     multiple_proteins = []
     File.open(options[:proteins_2predict]).each do |line|
-      line.chomp!
-      multiple_proteins << line
+      multiple_proteins << line.chomp.to_sym
     end
     options[:proteins_2predict] = multiple_proteins
   end
 else
   if !options[:multiple_proteins]
-    options[:proteins_2predict] = [options[:proteins_2predict].split('|')]
+    options[:proteins_2predict] = [options[:proteins_2predict].split('|').map{|pt| pt.to_sym}]
   else
-    options[:proteins_2predict] = options[:proteins_2predict].split('!').map{|profile| profile.split('|')}
+    options[:proteins_2predict] = options[:proteins_2predict].split('!').map{|profile| profile.split('|').map{|pt| pt.to_sym}}
   end
 end
 
+# 2. Load protein domains classification to get domains from proteins to predict
+pt_white_list = {}
+options[:proteins_2predict].each do |pt|
+  pt_white_list[pt] = true
+end
+cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category], options[:proteins_2predict], pt_white_list)
+pt_white_list = nil
+
 # 3. Load domain-FunSys associations
-domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold])
+dm_white_list = {}
+cath_data.each do |pt, domains|
+  domains.each do |dm|
+    dm_white_list[dm] = true
+  end
+end
+domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold], dm_white_list)
+dm_white_list = nil
 # 4. Prediction
 #handler = File.open(options[:output_file], 'w')
 gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'
 all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[:threads]) do |protein|
-  domains = get_protein_domains(cath_data, protein.to_sym, gene2protein, options[:identifier_mode])
+  domains = get_protein_domains(cath_data, protein, gene2protein, options[:identifier_mode])
   if domains.empty?
     nil
   else
@@ -300,7 +313,7 @@ all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[
       function_to_domains.each do |funsys, domains_data|
         score = domains_data.pop
         #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
-        final_predictions << [protein, domains_data.join(','), funsys, score]
+        final_predictions << [protein.to_s, domains_data.join(','), funsys, score]
       end
       final_predictions
     end
