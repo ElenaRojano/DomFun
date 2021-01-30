@@ -275,7 +275,7 @@ pt_white_list = {}
 options[:proteins_2predict].each do |pt|
   pt_white_list[pt] = true
 end
-cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category], options[:proteins_2predict], pt_white_list)
+cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category], pt_white_list)
 pt_white_list = nil
 
 # 3. Load domain-FunSys associations
@@ -287,6 +287,7 @@ cath_data.each do |pt, domains|
 end
 domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold], dm_white_list)
 dm_white_list = nil
+
 # 4. Prediction
 #handler = File.open(options[:output_file], 'w')
 gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'

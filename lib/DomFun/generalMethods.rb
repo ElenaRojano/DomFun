@@ -38,7 +38,7 @@ def load_proteins_file(file, annotation_types)
 	return protein_annotations, counter, proteins_without_annotations.uniq
 end
 
-def load_cath_data(file, category, dictionary_key='gene_name', whitelist=nil)
+def load_cath_data(file, category, whitelist=nil, dictionary_key='gene_name')
 	if dictionary_key == 'gene_name'
 		field = 3
 	elsif dictionary_key == 'geneID' # UNIPROT entry_name
