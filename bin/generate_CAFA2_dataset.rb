@@ -1,5 +1,10 @@
 #! /usr/bin/env ruby
 
+##########################
+# Rojano E. & Seoane P., Feb 2021
+# Generate files for CAFA 3 validation (from normalized predictions)
+##########################
+
 require 'optparse'
 
 ##########################
@@ -65,32 +70,6 @@ def translate_protein_ids(cafa_file, predictions)
   return cafa_predictions
 end
 
-def normalize_association_values(cafa_predictions)
-  raw_association_values = []
-  normalized_prediction_values = []
-  cafa_predictions.each do |protID, goTerm, value|
-    raw_association_values << value.to_f
-  end
-  raw_values_mean = raw_association_values.mean
-  raw_values_sd = raw_association_values.standard_deviation
-  association_values_minus_mean = []
-  raw_association_values.each do |value|
-    z_score = (value - raw_values_mean).fdiv(raw_values_sd)
-    if z_score > 2 
-      z_score = 2
-    elsif z_score < -2
-      z_score = -2
-    end
-    z_score = z_score.fdiv(5) + 0.5
-    association_values_minus_mean << z_score
-  end
-  cafa_predictions.each_with_index do |info, c|
-    protID, goTerm, association_values = info
-    normalized_prediction_values << [protID, goTerm, association_values_minus_mean[c]]
-  end
-  cafa_predictions = normalized_prediction_values
-  return cafa_predictions
-end
 
 ##########################
 #OPT-PARSER
@@ -114,10 +93,6 @@ OptionParser.new do |opts|
     options[:output_file] = output_file
   end
 
-  options[:do_norm] = false
-  opts.on("-n", "--do_norm", "Normalize prediction values") do
-    options[:do_norm] = true
-  end
 
 end.parse!
 
@@ -126,6 +101,7 @@ end.parse!
 ##########################
 
 predictions = load_predictions(options[:input_predictions])
+
 cafa_predictions = translate_protein_ids(options[:input_cafa], predictions)
 cafa_predictions = normalize_association_values(cafa_predictions) if options[:do_norm]
 
