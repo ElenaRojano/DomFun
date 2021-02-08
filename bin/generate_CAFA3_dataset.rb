@@ -22,11 +22,13 @@ def load_predictions(input_file)
 	File.open(input_file).each do |line|
 		line.chomp! 
     proteinID, domains, go_term, p_value = line.split("\t")	
+    #STDERR.puts p_value.inspect
+    p_value = sprintf "%.2f", p_value.to_f
     query = predictions[proteinID]
     if query.nil?
-      predictions[proteinID] = [[go_term, p_value.to_f]]
+      predictions[proteinID] = [[go_term, p_value]]
     else
-      query << [go_term, p_value.to_f]
+      query << [go_term, p_value]
     end 
   end
   return predictions
@@ -98,13 +100,17 @@ predictions = load_predictions(options[:input_predictions])
 cath_dict = load_hash(options[:cath_dict], 'a')
 cafa_dict = load_hash(options[:cafa_dict], 'b')
 cafa3_predictions, untranslated_proteins = translate_uniprot_to_CAFA(predictions, cath_dict, cafa_dict)
-
-handler = File.open(options[:output_file], 'w')
-cafa3_predictions.each do |cafaID, predictions|
-	predictions.each do |prediction|
-		handler.puts "#{cafaID}\t#{prediction.join("\t")}"
-	end
+#header = "AUTHOR Bio267\nMODEL 1\nKEYWORDS sequence alignment.\n"
+#footer = "END"
+File.open(options[:output_file], 'w') do |f|
+  #f.puts header
+  cafa3_predictions.each do |cafaID, predictions|
+  	predictions.each do |prediction|
+  		f.puts "#{cafaID}\t#{prediction.join("\t")}"
+  	end
+  end
+  #f.puts footer
 end
-
-handler = File.open(options[:untranslated_proteins], 'w')
-handler.puts untranslated_proteins.join("\n")
+File.open(options[:untranslated_proteins], 'w') do |f|
+  f.puts untranslated_proteins.join("\n")
+end
