@@ -19,12 +19,13 @@ require 'fileutils'
 ##########################
 def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein2gene, translate2gene)
 	records = Hash.new(0)
+	#STDERR.puts cath_data.inspect
   nomenclature_annotations.each do |nomenclature, protein_annotations|
 		annots = []
 		datas = []
 		protein_annotations.each do |protID, annotations|
 			query_cath_data = cath_data[protID]
-			if !query_cath_data.nil?
+      if !query_cath_data.nil?
         if !translate2gene
           recordID = protID
         else
@@ -104,11 +105,6 @@ OptionParser.new do |opts|
     options[:category_type] = data
   end  
 
-  options[:unnanotated_proteins] = 'unnanotated_proteins_list.txt'
-  opts.on("-u", "--unnanotated_proteins PATH", "Output file with unnanotated proteins list") do |data|
-    options[:unnanotated_proteins] = data
-  end
-
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
@@ -122,13 +118,13 @@ end.parse!
 
 puts "Loading data..."
 cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:input_domains], options[:category_type])
-nomenclature_annotations, number_of_proteins, proteins_without_annotations = load_proteins_file(options[:input_annotations], options[:annotation_types])
+nomenclature_annotations, number_of_proteins = load_proteins_file(options[:input_annotations], options[:annotation_types])
 
 networks_path = nil
 if options[:category_type] == 'funfamID'
-	networks_path = 'networks/funfam_networks'
+	networks_path = 'PPP_networks/funfam_networks'
 else
-	networks_path = 'networks/superfamily_networks'
+	networks_path = 'PPP_networks/superfamily_networks'
 end
 FileUtils.mkdir_p networks_path
 puts "Generating tripartite networks. This can take a while, please wait."
@@ -138,7 +134,5 @@ File.open(options[:output_stats], 'w') do |f|
   	f.puts "#{annotation_type}\t#{number_of_proteins}"
   end
   f.puts "Total of Uniprot proteins\t#{number_of_proteins}"
-  f.puts "Total of Uniprot proteins without annotations\t#{proteins_without_annotations.length}"
   f.puts "Total of CATH proteins\t#{cath_proteins_number}"
 end
-File.open(options[:unnanotated_proteins], 'w') {|f| f.puts proteins_without_annotations.join("\n")}
