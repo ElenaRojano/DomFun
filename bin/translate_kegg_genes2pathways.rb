@@ -32,17 +32,17 @@ end
 
 def load_network(network_kegg_file)
 	network_kegg = []
-	superfamily_ids = []
+	domain_ids = []
 	File.open(network_kegg_file).each do |line|
 		line.chomp!
-		kegg_gene_ID, gene = line.split("\t")
-		if kegg_gene_ID.include?('hsa:')
-			network_kegg << [kegg_gene_ID, gene]
+		item, gene = line.split("\t")
+		if !item.match(/^[a-z]{3,3}:/).nil?
+			network_kegg << [item, gene]
 		else
-			superfamily_ids << [kegg_gene_ID, gene]
+			domain_ids << [item, gene]
 		end
 	end
-	return network_kegg, superfamily_ids
+	return network_kegg, domain_ids
 end
 
 ##########################
@@ -78,21 +78,21 @@ end.parse!
 #MAIN
 ##########################
 kegg_dictionary = load_kegg_dictionary(options[:kegg_pathways])
-network_kegg, superfamily_ids = load_network(options[:network_kegg])
+network_kegg, domain_ids = load_network(options[:network_kegg])
 pathways_network = []
-network_kegg.each do |kegg_gene_ID, proteinID|
-	pathwayIDs = kegg_dictionary[kegg_gene_ID]
+network_kegg.each do |kegg, proteinID|
+	pathwayIDs = kegg_dictionary[kegg]
 	unless pathwayIDs.nil?
 		pathwayIDs.each do |pathway|
 			pathways_network << [pathway, proteinID]
 		end
 	end
 end
-handler = File.open(options[:output_path], 'w')
-pathways_network.each do |pair|
-	handler.puts pair.join("\t")
+File.open(options[:output_path], 'w') do |f|
+	pathways_network.each do |pair|
+		f.puts pair.join("\t")
+	end
+	domain_ids.each do |pair|
+		f.puts pair.join("\t")
+	end
 end
-superfamily_ids.each do |pair|
-	handler.puts pair.join("\t")
-end
-handler.close
