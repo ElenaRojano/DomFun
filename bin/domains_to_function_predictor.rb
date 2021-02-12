@@ -229,8 +229,7 @@ OptionParser.new do |opts|
     options[:pvalue_threshold] = pvalue_threshold.to_f
   end
 
-
-  options[:association_threshold] = 2
+  options[:association_threshold] = 0
   opts.on("-T", "--association_threshold FLOAT", "Association value threshold") do |association_threshold|
     options[:association_threshold] = association_threshold.to_f
   end
