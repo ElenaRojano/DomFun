@@ -33,6 +33,9 @@ def build_tripartite_networks(nomenclature_annotations, cath_data, path, protein
   				recordID = protID if recordID.nil?
         end
 				annotations.each do |annotation|
+          if nomenclature == 'reactome'
+            annotation.gsub!(/R-([A-Z]{3,3})-/, 'R-')
+          end
 					annots << [annotation, recordID]
 				end
 				query_cath_data.each do |data|
