@@ -122,9 +122,9 @@ nomenclature_annotations, number_of_proteins = load_proteins_file(options[:input
 
 networks_path = nil
 if options[:category_type] == 'funfamID'
-	networks_path = 'PPP_networks/funfam_networks'
+	networks_path = 'PPP_results/networks/funfam_networks'
 else
-	networks_path = 'PPP_networks/superfamily_networks'
+	networks_path = 'PPP_results/networks/superfamily_networks'
 end
 FileUtils.mkdir_p networks_path
 puts "Generating tripartite networks. This can take a while, please wait."
