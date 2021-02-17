@@ -234,11 +234,6 @@ OptionParser.new do |opts|
     options[:association_threshold] = association_threshold.to_f
   end
 
-  options[:multiple_proteins] = false
-    opts.on("-u", "--multiple_proteins", "Set if multiple profiles") do
-  options[:multiple_proteins] = true
-  end
-
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
@@ -251,23 +246,11 @@ end.parse!
 ##########################
 
 # 1. Load protein(s) to predict
-if File.exist?(options[:proteins_2predict])
-  if !options[:multiple_proteins]
-    options[:proteins_2predict] = [File.open(options[:proteins_2predict]).readlines.map!{|line| line.chomp.to_sym}]
-  else
-    multiple_proteins = []
-    File.open(options[:proteins_2predict]).each do |line|
-      multiple_proteins << line.chomp.to_sym
-    end
-    options[:proteins_2predict] = multiple_proteins
-  end
-else
-  if !options[:multiple_proteins]
-    options[:proteins_2predict] = [options[:proteins_2predict].split('|').map{|pt| pt.to_sym}]
-  else
-    options[:proteins_2predict] = options[:proteins_2predict].split('!').map{|profile| profile.split('|').map{|pt| pt.to_sym}}
-  end
+multiple_proteins = []
+File.open(options[:proteins_2predict]).each do |line|
+  multiple_proteins << line.chomp.to_sym
 end
+options[:proteins_2predict] = multiple_proteins
 
 # 2. Load protein domains classification to get domains from proteins to predict
 pt_white_list = {}
