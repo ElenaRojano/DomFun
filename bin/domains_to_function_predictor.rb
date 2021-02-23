@@ -48,7 +48,7 @@ def load_domain_to_pathway_association(associations_file, threshold, white_list=
 		annotation, domain, association_value = line.split("\t")
     next if !white_list.nil? && white_list[domain].nil?
     association_value = association_value.to_f
-		next if association_value < threshold
+		next if !threshold.nil? && association_value < threshold
     query = domain_to_pathway_associations[domain]
 		if query.nil?
 			domain_to_pathway_associations[domain] = [[annotation, association_value]]
@@ -160,10 +160,12 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
       abort("Invalid integration method: #{scoring_system}")
     end
   end
-  if scoring_system == 'fisher' || scoring_system == 'harmonic'
-    function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
-  else
-    function_to_domains.select!{|function, attributes| attributes.last >= pvalue_threshold}
+  if !pvalue_threshold.nil?
+    if scoring_system == 'fisher' || scoring_system == 'harmonic'
+      function_to_domains.select!{|function, attributes| attributes.last <= pvalue_threshold}
+    else
+      function_to_domains.select!{|function, attributes| attributes.last >= pvalue_threshold}
+    end
   end
 end
 
@@ -224,12 +226,12 @@ OptionParser.new do |opts|
     options[:threads] = data.to_i - 1
   end
 
-  options[:pvalue_threshold] = 0.05
+  options[:pvalue_threshold] = nil
   opts.on("-t", "--pvalue_threshold FLOAT", "P-value threshold") do |pvalue_threshold|
     options[:pvalue_threshold] = pvalue_threshold.to_f
   end
 
-  options[:association_threshold] = 0
+  options[:association_threshold] = nil
   opts.on("-T", "--association_threshold FLOAT", "Association value threshold") do |association_threshold|
     options[:association_threshold] = association_threshold.to_f
   end
