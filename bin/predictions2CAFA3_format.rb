@@ -99,9 +99,9 @@ def generate_output_path(domain_class, association_method, string, file_path)
   return full_output_path, filename
 end
 
-# , 
-#       "plot" => {"results" => plot_results_path, "title" => title, "smooth" => smooth, "file1" => output_file1
-#     }
+# def parse_output_file()
+
+# end
 
 ##########################
 #OPT-PARSER
@@ -140,9 +140,14 @@ OptionParser.new do |opts|
     options[:association_method] = data
   end  
 
-  options[:cafa3_results] = 'CAFA3_results'
+  options[:cafa3_results] = 'results4CAFA'
   opts.on("-g", "--cafa3_results PATH", "Path to save CAFA 3 plot files") do |data|
     options[:cafa3_results] = data
+  end
+
+  options[:set_model] = '1'
+  opts.on("-m", "--set_model STRING", "Set model for CAFA 3 analysis") do |data|
+    options[:set_model] = data
   end
 
   options[:output_path] = nil
@@ -180,8 +185,7 @@ all_predictions = load_predictions(prediction_files)
 accesion_geneid_dictionary = load_hash(options[:accesion_geneid_dictionary], 'a')
 targetID_geneid_dictionary = load_hash(options[:targetID_geneid_dictionary], 'b')
 
-# OUTPUT PREDICTION FILE FORMAT HEADER AND FOOTER:
-header = "AUTHOR #{options[:domains_class]}\nMODEL #{options[:association_method]}\nKEYWORDS sequence alignment.\n"
+# OUTPUT PREDICTION FILE FORMAT FOOTER:
 footer = "END"
 
 # YAML FILES PARAMETERS:
@@ -192,6 +196,7 @@ smooth = "N"
 
 domain_class = nil
 association_method = nil
+FileUtils.mkdir_p(options[:cafa3_results])
 
 all_prediction_filenames = []
 # REFORMED CAFA 3 PREDICTION FILES:
@@ -199,7 +204,9 @@ all_predictions.each do |filename, prediction|
   cafa3_predictions, untranslated_proteins = translate_uniprot_to_CAFA(prediction, accesion_geneid_dictionary, targetID_geneid_dictionary)
   domain_class = filename.split('_')[1]
   association_method = filename.split('_')[2]
-  full_output_path, filename = generate_output_path(domain_class, association_method, 'all.txt', options[:output_path])
+  header = "AUTHOR #{domain_class + association_method}\nMODEL #{options[:set_model]}\nKEYWORDS sequence alignment.\n"
+  cafa_name = domain_class + association_method
+  full_output_path, filename = generate_output_path(cafa_name, options[:set_model], 'all.txt', options[:output_path])
   all_prediction_filenames << filename
 
   File.open(full_output_path, 'w') do |f|
@@ -213,14 +220,13 @@ all_predictions.each do |filename, prediction|
   end
 
   # GENERATE YAML FILES FOR PREDICTIONS:
+  
   output_file_path = full_output_path #where CAFA 3 predictions file is stored
   full_output_path, filename = generate_output_path(domain_class, association_method, 'config_launch.yaml', options[:yaml_file])
-  yaml_output = full_output_path 
-  output_file1 = [options[:domains_class], options[:association_method], title].join('_')
+  output_file1 = [options[:domains_class], options[:set_model], title].join('_')
 
-  FileUtils.mkdir_p(options[:cafa3_results])
 
-  yaml_pred_hash = generate_yaml_hash_predictions(output_file_path, obo_path, benchmark_files, yaml_output)
+  yaml_pred_hash = generate_yaml_hash_predictions(output_file_path, obo_path, benchmark_files, options[:cafa3_results])
   File.open(full_output_path, "w") { |file| file.write(yaml_pred_hash.to_yaml) }
 
   # GENERATE FILE WITH LOST PROTEINS:
