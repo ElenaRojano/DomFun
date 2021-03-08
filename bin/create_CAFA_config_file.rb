@@ -124,17 +124,20 @@ options[:go_subontology].each do |subontology|
 		options[:performance_metrics].each do |metric|
 			f.puts "metric = #{metric}"
 		end
+		f.puts "model = all"
+		f.puts "model = +BN4S"
+		f.puts "model = +BB4S"
 	end
 end
 
 
 ontologies = options[:go_subontology].map{|o| o.upcase}.join(',')
 config_files = config_filenames.join(',')
-File.open(options[:general_variables], 'w') do |f|
+File.open(File.join(options[:cafa_path], 'matlab', options[:general_variables]), 'w') do |f|
 	f.puts "cafa_system_dir = '#{options[:cafa_path]}'" 
 	f.puts "dir_validation = '#{options[:assessment_dir]}'"
 	f.puts "ontology_folder = '#{File.join(options[:cafa_path], options[:ontology_folder])}'"
-	f.puts "ontology = '#{ontologies}'"
+	f.puts "ontologies = '#{ontologies}'"
 	f.puts "dir_evaluation_configs = '#{File.dirname(options[:config_output])}'"
 	f.puts "config_files = '#{config_files}'"
 	f.puts "register_file = '#{options[:register_filename]}'"
