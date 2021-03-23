@@ -3,59 +3,140 @@
 ##########################
 # Rojano E. & Seoane P., Feb 2021
 # Script to generate a report to consult the status of the 
-# data in CAFA 3 and CATH for proteins function prediction
+# data in CAFA and CATH for proteins function prediction
 ##########################
 
+ROOT_PATH = File.dirname(__FILE__)
+$: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
+require 'generalMethods'
 require 'optparse'
+require 'csv'
 
 ##########################
 #METHODS
 ##########################
 
-def load_hash(filename, domain_type='superfamilyID')
-	uniprot_ACC_container = {}
-	gene_ID_container = {}
-	counter = 0
-	File.open(filename).each do |line|
+def load_data(input_file)
+	metadata = []
+	File.open(input_file).each do |line|
 		line.chomp!
-		if counter == 0
-			counter += 1
-			next
-		end
-		cath_data = line.split("\t", 9)
-		uniprot_ACC = cath_data[0].gsub('"', '')
-		gene_ID = cath_data[4].gsub('"', '')
-		superfamily_ID = cath_data[5].gsub('"', '')
-		funfam_ID = cath_data[6].gsub('"', '')
-		if domain_type == 'superfamilyID'
-			value = superfamily_ID
-		else
-			value = funfam_ID
+		metadata << line.split("\t")
+	end
+	return metadata
+end
+
+def load_tab_file(training_proteins)
+	tab_data = []
+	File.open(training_proteins).each do |line|
+		line.chomp!
+		tab_data << line.split("\t")
+	end
+	return tab_data
+end
+
+def calculate_training_proteins_stats(training_proteins, stats, prefix)
+	stats[prefix + 'number'] = training_proteins.map{|a| a.first}.uniq.length
+	stats[prefix + 'all_go_annots'] = training_proteins.map{|a| a[1]}.uniq.length
+	go_subontologies = {'C' => [], 'F' => [], 'P' => []}
+	training_proteins.each do |protID, goID, goType|
+		go_subontologies[goType] << goID
+	end
+	stats[prefix + 'total_gocc'] = go_subontologies['C'].uniq.length
+	stats[prefix + 'total_gomf'] = go_subontologies['F'].uniq.length
+	stats[prefix + 'total_gobp'] = go_subontologies['P'].uniq.length
+	stats[prefix + 'total_protein-gocc_relations'] = go_subontologies['C'].length
+	stats[prefix + 'total_protein-gocc_gomf'] = go_subontologies['F'].length
+	stats[prefix + 'total_protein-gocc_gobp'] = go_subontologies['P'].length
+end
+
+def calculate_testing_proteins_stats(testing_proteins, stats, prefix)
+	stats[prefix + 'number'] = testing_proteins.map{|a| a.first}.uniq.length
+	proteins_by_organisms = testing_proteins.map{|a| a.first.split('_').last}
+	list_of_proteins_by_organisms = proteins_by_organisms.group_by{|e| e}.map{|k, v| [k, v.length]}.to_h
+	list_of_proteins_by_organisms.each do |organism, count|
+		stats[prefix + organism + '_proteins'] = count if organism == 'HUMAN'
+	end
+end
+
+
+def calculate_cath_stats(cath_info_domains, stats, prefix)
+	stats[prefix + 'number'] = cath_info_domains.values.uniq.length
+	stats[prefix + 'protein_relations'] = cath_info_domains.values.map{|v| v.uniq.length}.inject { |sum, n| sum + n } 
+end
+
+
+def get_input_cafa_data(path, stats, id)		
+	training_proteins = File.join(path, 'training_proteins.txt')
+	training_proteins = load_tab_file(training_proteins)
+	prefix = id.upcase + '==training_proteins--'
+	calculate_training_proteins_stats(training_proteins, stats, prefix)
+
+	human_training_proteins = File.join(path, 'training_proteins_human.txt')
+	training_proteins = load_tab_file(human_training_proteins)
+	prefix = id.upcase + '==HUMAN_training_proteins--'
+	calculate_training_proteins_stats(training_proteins, stats, prefix)
+
+	testing_proteins = File.join(path, 'testing_proteins.txt')
+	testing_proteins = load_tab_file(testing_proteins)
+	prefix = id.upcase + '==testing_proteins--'
+	calculate_testing_proteins_stats(testing_proteins, stats, prefix)
+end
+
+def get_input_CATH_data(path, stats, id)
+	#cath_info_SF == {:ProtID => ["SFid1", "SFid2"]}
+	#protein2gene_dict_SF == {:ProtID => "GeneName"}
+	#cath_proteins_number == 38581 (TOTAL PROTEINS WITH DOMAINS ANNOTATIONS)
+		
+	cath_info_SF, protein2gene_dict_SF, cath_proteins_number = load_cath_data(path, 'superfamilyID', whitelist=nil, dictionary_key='gene_name')
+	prefix = id.upcase + '==superfamily_domains--'
+	calculate_cath_stats(cath_info_SF, stats, prefix)	
+	
+	cath_info_FF, protein2gene_dict_FF, cath_proteins_number = load_cath_data(path, 'funfamID', whitelist=nil, dictionary_key='gene_name')
+	prefix = id.upcase + '==funfam_domains--'
+	calculate_cath_stats(cath_info_FF, stats, prefix)
+	
+	stats[id.upcase + '==proteins_number'] = cath_proteins_number #only once
+end
+
+def get_input_network_data(path, stats, id)
+	Dir.glob(path).each do |input_file|
+		if input_file.include?('superfamilyID')
+			if input_file.include?('GOMF')
+				prefix = id.upcase + '==superfamilyGOMFNetwork--'
+				calculate_network_stats(input_file, stats, prefix, id)
+			elsif input_file.include?('GOBP')
+				prefix = id.upcase + '==superfamilyGOBPNetwork--'
+				calculate_network_stats(input_file, stats, prefix, id)
+			elsif input_file.include?('GOCC')
+				prefix = id.upcase + '==superfamilyGOCCNetwork--'
+				calculate_network_stats(input_file, stats, prefix, id)
+			end
 		end	
-		fill_hash(uniprot_ACC_container, uniprot_ACC, value)
-		fill_hash(gene_ID_container, gene_ID, value)
-	end
-	return uniprot_ACC_container, gene_ID_container
-end
-
-def fill_hash(hash_name, key, value)
-	query = hash_name[key]
-	if query.nil?
-		hash_name[key] = [value]
-	else
-		query << value unless query.include?(value) || value == '' #avoid empty domain records
 	end
 end
 
-def load_array(filename)
-	container = []
-	File.open(filename).each do |line|
+def calculate_network_stats(input_file, stats, prefix, id)
+	network_info = {}
+	File.open(input_file).each do |line|
 		line.chomp!
-		value = line.split("\t")
-		container << value
+		identifier, proteinID = line.split("\t")
+		query = network_info[proteinID]
+		if query.nil?
+			network_info[proteinID] = [identifier]
+		else
+			query << identifier
+		end
 	end
-	return container.uniq.flatten!
+	stats[id.upcase + '==uniq_proteins_number'] = network_info.keys.flatten.uniq.length
+	stats[id.upcase + '==GO-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('GO') }.length
+	stats[id.upcase + '==domain-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('.') }.length
+	stats[id.upcase + '==total_domain/GO-protein_relations'] = network_info.values.flatten.length
 end
+
+def get_input_associations_data(path, stats, id)
+
+end
+
 
 ##########################
 #OPT-PARSER
@@ -65,24 +146,9 @@ options = {}
 OptionParser.new do |opts|
   opts.banner = "Usage: #{__FILE__} [options]"
   
-  options[:cath_geneIDs] = nil
-  opts.on("-a", "--cath_geneIDs PATH", "File from CATH with proteins and FF or SF") do |data|
-    options[:cath_geneIDs] = data
-  end
-
-  options[:cafa3_targets] = nil
-  opts.on("-b", "--cafa3_targets PATH", "CAFA 3 target proteins from all species") do |data|
-    options[:cafa3_targets] = data
-  end
-
-  options[:cafa3_training] = nil
-  opts.on("-c", "--cafa3_training PATH", "CAFA 3 training protein from all species") do |data|
-    options[:cafa3_training] = data
-  end
-
-  options[:domain_category] = "superfamilyID"
-  opts.on("-d", "--domain_category PATH", "Domain category. Please choose one: superfamilyID or funfamID" ) do |data|
-    options[:domain_category] = data
+  options[:input_file] = nil
+  opts.on("-i", "--input_file PATH", "Input file with tags and paths to analyze") do |data|
+    options[:input_file] = data
   end
 
   options[:output_file] = 'output_stats.txt'
@@ -101,44 +167,25 @@ end.parse!
 #MAIN
 ##########################
 
-stats = []
 
-uniprot_ACC_container, gene_ID_container = load_hash(options[:cath_geneIDs], options[:domain_category])
-#uniprot_ACC_container for CAFA3 training IDs
-#gene_ID_container for CAFA3 testing IDs
-
-cath_species = gene_ID_container.keys.map{|a| a.split('_').last}
-cath_for_target_proteins = gene_ID_container.keys
-cath_for_training_proteins = uniprot_ACC_container.keys
-
-total_cath_geneIDs = cath_for_target_proteins.length
-stats << ["Total genes in CATH:", total_cath_geneIDs]
-
-cafa3_targets = load_array(options[:cafa3_targets])
-total_cafa3_targets = cafa3_targets.length
-stats << ["Total genes in CAFA3 (targets):", total_cafa3_targets]
-
-matched_geneIDs = cath_for_target_proteins & cafa3_targets
-total_target_genes_in_CATH = matched_geneIDs.uniq.length
-
-stats << ['Genes with domains:', total_target_genes_in_CATH]
-stats << ['Percentage of CAFA3 genes with at least one CATH domains:', total_target_genes_in_CATH.fdiv(total_cafa3_targets)*100]
-
-unmatched_cafa3_targets = cafa3_targets - matched_geneIDs
-total_cafa3_unmatched_targets = unmatched_cafa3_targets.length
-
-cafa3_training = load_array(options[:cafa3_training])
-
-total_cafa3_training = cafa3_training.length
-stats << ["Total genes in CAFA3 (training):", total_cafa3_training]
-
-matched_geneIDs_training = cath_for_training_proteins & cafa3_training
-total_training_genes_in_CATH = matched_geneIDs_training.uniq.length
-stats << ['Genes with domains:', total_training_genes_in_CATH]
-stats << ['Percentage of CAFA3 genes with at least one CATH domains:', total_training_genes_in_CATH.fdiv(total_cafa3_training)*100]
-
-File.open(options[:output_file], 'w') do |f|
-	stats.each do |stat|
-		f.puts stat.join("\t")
+tag_path_info = load_data(options[:input_file])
+stats = {}
+tag_path_info.each do |id, path|
+	if id.include?('input_cafa')
+		get_input_cafa_data(path, stats, id)
+	elsif id.include?('input_cath')
+		get_input_CATH_data(path, stats, id)
+	elsif id.include?('input_networks')
+		get_input_network_data(path, stats, id)
+	elsif id.include?('input_associations')
+		get_input_associations_data(path, stats, id)
 	end
 end
+
+File.open(options[:output_file], 'w') do |f|
+	stats.each do |stat, values|
+		f.puts "#{stat}\t#{values}"
+	end
+end
+
+Process.exit
