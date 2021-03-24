@@ -34,6 +34,13 @@ def load_tab_file(training_proteins)
 	return tab_data
 end
 
+def open_file_save_array(input_file, output_array)
+	File.open(input_file).each do |line|
+		line.chomp!
+		output_array << line.split("\t")
+	end
+end
+
 def calculate_training_proteins_stats(training_proteins, stats, prefix)
 	stats[prefix + 'number'] = training_proteins.map{|a| a.first}.uniq.length
 	stats[prefix + 'all_go_annots'] = training_proteins.map{|a| a[1]}.uniq.length
@@ -102,13 +109,13 @@ def get_input_network_data(path, stats, id)
 	Dir.glob(path).each do |input_file|
 		if input_file.include?('superfamilyID')
 			if input_file.include?('GOMF')
-				prefix = id.upcase + '==superfamilyGOMFNetwork--'
+				prefix = id.upcase + '==superfamily_GOMF_network--'
 				calculate_network_stats(input_file, stats, prefix, id)
 			elsif input_file.include?('GOBP')
-				prefix = id.upcase + '==superfamilyGOBPNetwork--'
+				prefix = id.upcase + '==superfamily_GOBP_network--'
 				calculate_network_stats(input_file, stats, prefix, id)
 			elsif input_file.include?('GOCC')
-				prefix = id.upcase + '==superfamilyGOCCNetwork--'
+				prefix = id.upcase + '==superfamily_GOCC_network--'
 				calculate_network_stats(input_file, stats, prefix, id)
 			end
 		end	
@@ -127,16 +134,75 @@ def calculate_network_stats(input_file, stats, prefix, id)
 			query << identifier
 		end
 	end
-	stats[id.upcase + '==uniq_proteins_number'] = network_info.keys.flatten.uniq.length
-	stats[id.upcase + '==GO-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('GO') }.length
-	stats[id.upcase + '==domain-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('.') }.length
-	stats[id.upcase + '==total_domain/GO-protein_relations'] = network_info.values.flatten.length
+	stats[prefix + 'uniq_proteins_number'] = network_info.keys.flatten.uniq.length
+	stats[prefix + 'uniq_domains_number'] = network_info.values.flatten.select{|a| a.include?('.')}.uniq.length
+	stats[prefix + 'uniq_GO_annotations_number'] = network_info.values.flatten.select{|a| a.include?('GO')}.uniq.length
+	stats[prefix + 'GO-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('GO') }.length
+	stats[prefix + 'domain-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('.') }.length
+	stats[prefix + 'total_domain/GO-protein_relations'] = network_info.values.flatten.length
 end
 
-def get_input_associations_data(path, stats, id)
-
+#Note: associations, predictions and normalized predictions
+#load file are under the same method.
+#Stats calculation has been joined in the same method aw.
+def get_input_assoc_predictions_data(path, stats, id, info_string)
+	assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
+	if info_string == '_assocs--'
+		mode = 'associations'
+	elsif info_string == '_preds--'
+		mode = 'predictions'
+	elsif info_string == '_norm_preds--'
+		mode = 'norm_predictions'
+	end		
+	Dir.glob(path).each do |input_file|
+		assoc_methods.each do |assoc_method|		
+			if input_file.include?('superfamilyID')
+				if input_file.include?('GOMF') && input_file.include?(assoc_method)
+					prefix = id.upcase + '==superfamily_GOMF_' + assoc_method + info_string
+					calculate_stats(input_file, stats, prefix, id, mode)
+				elsif input_file.include?('GOBP') && input_file.include?(assoc_method)
+					prefix = id.upcase + '==superfamily_GOBP_' + assoc_method + info_string
+ 					calculate_stats(input_file, stats, prefix, id, mode)
+				elsif input_file.include?('GOCC') && input_file.include?(assoc_method)
+					prefix = id.upcase + '==superfamily_GOCC' + assoc_method + info_string
+					calculate_stats(input_file, stats, prefix, id, mode)
+				end
+			end
+		end	
+	end
 end
 
+def calculate_stats(input_file, stats, prefix, id, mode)
+	file_info = []
+	open_file_save_array(input_file, file_info)
+	if mode == 'associations'
+		stats[prefix + 'GO-domain_relations_number'] = file_info.length
+		stats[prefix + 'GO_number'] = file_info.map{|a| a.first}.uniq.length
+		stats[prefix + 'domain_number'] = file_info.map{|a| a[1]}.uniq.length
+		stats[prefix + 'max_assoc_val'] = file_info.map{|a| a.last}.max
+		stats[prefix + 'min_assoc_val'] = file_info.map{|a| a.last}.min
+		assoc_vals = file_info.map{|a| a.last.to_f}
+		stats[prefix + 'ave_assoc_val'] = assoc_vals.inject { |sum, n| sum + n }.fdiv(assoc_vals.length)
+	elsif mode == 'predictions'
+		stats[prefix + 'predicted_proteins'] = file_info.map{|a| a.first}.uniq.length
+		stats[prefix + 'total_GOs_predicted'] = file_info.map{|a| a[2]}.uniq.length
+		stats[prefix + 'total_domains'] = file_info.map{|a| a[1].split(',')}.flatten.uniq.length
+		stats[prefix + 'max_pred_val'] = file_info.map{|a| a.last}.max
+		stats[prefix + 'min_pred_val'] = file_info.map{|a| a.last}.min
+		pred_vals = file_info.map{|a| a.last.to_f}
+		stats[prefix + 'ave_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
+	elsif mode == 'norm_predictions'
+		#Norm predictions max value are wrong (gets scientific annotation like: 9.101087297347377e-06 as max)
+		#See how to correct it
+		stats[prefix + 'predicted_proteins_after_norm'] = file_info.map{|a| a.first}.uniq.length
+		stats[prefix + 'total_GOs_predicted_after_norm'] = file_info.map{|a| a[2]}.uniq.length
+		stats[prefix + 'total_domains_after_norm'] = file_info.map{|a| a[1].split(',')}.flatten.uniq.length
+		stats[prefix + 'max_norm_pred_val'] = file_info.map{|a| a.last}.max
+		stats[prefix + 'min_norm_pred_val'] = file_info.map{|a| a.last}.min
+		pred_vals = file_info.map{|a| a.last.to_f}
+		stats[prefix + 'ave_norm_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
+	end
+end
 
 ##########################
 #OPT-PARSER
@@ -167,9 +233,9 @@ end.parse!
 #MAIN
 ##########################
 
-
 tag_path_info = load_data(options[:input_file])
 stats = {}
+loaded_data ={}
 tag_path_info.each do |id, path|
 	if id.include?('input_cafa')
 		get_input_cafa_data(path, stats, id)
@@ -178,9 +244,19 @@ tag_path_info.each do |id, path|
 	elsif id.include?('input_networks')
 		get_input_network_data(path, stats, id)
 	elsif id.include?('input_associations')
-		get_input_associations_data(path, stats, id)
+		info_string = '_assocs--'
+		get_input_assoc_predictions_data(path, stats, id, info_string)
+	elsif id.include?('input_predictions')
+		info_string = '_preds--'
+		get_input_assoc_predictions_data(path, stats, id, info_string)
+	elsif id.include?('input_normpreds')
+		info_string = info_string = '_norm_preds--'
+		get_input_assoc_predictions_data(path, stats, id, info_string)
+	#TODO: calculate how many proteins have CATH domains
 	end
 end
+
+
 
 File.open(options[:output_file], 'w') do |f|
 	stats.each do |stat, values|
