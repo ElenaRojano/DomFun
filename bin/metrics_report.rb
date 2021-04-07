@@ -6,11 +6,13 @@
 # data in CAFA and CATH for proteins function prediction
 ##########################
 
+REPORT_FOLDER=File.expand_path(File.join(File.dirname(__FILE__), '..', 'templates'))
 ROOT_PATH = File.dirname(__FILE__)
 $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
 require 'generalMethods'
 require 'optparse'
 require 'csv'
+require 'report_html'
 
 ##########################
 #METHODS
@@ -299,6 +301,13 @@ go_subontologies = ['GOMF', 'GOBP', 'GOCC']
 	stats["COMBINED_RESULTS==" + organism + '_testing_proteins_without_geneID (%)'] = testing_proteins_untranslated.length.fdiv(testing_proteins_untranslated.length + testing_proteins.length)*100
 end
 
+def statistics_report_data(container, html_file)
+	template = File.open(File.join(REPORT_FOLDER, 'statistics_report.erb')).read
+	report = Report_html.new(container, 'Full statistics for CAFA 2 and CAFA 3 datasets')
+	report.build(template)
+	report.write(html_file)
+end
+
 ##########################
 #OPT-PARSER
 ##########################
@@ -311,6 +320,12 @@ OptionParser.new do |opts|
   opts.on("-d", "--accessionID_dictionary PATH", "Input file with gene accession ID - protein ID dictionary") do |data|
     options[:accessionID_dictionary] = data
   end
+
+  options[:html_file] = "statistics_report.html"
+  opts.on("-F", "--html_file PATH", "HTML file with statistics report for CAFA 2 and CAFA 3") do |html_file|
+    options[:html_file] = html_file
+  end
+
   
   options[:input_file] = nil
   opts.on("-i", "--input_file PATH", "Input file with tags and paths to analyze") do |data|
@@ -369,5 +384,13 @@ File.open(options[:output_file], 'w') do |f|
 		f.puts "#{stat}\t#{values}"
 	end
 end
+
+####- HTML REPORTING -####
+
+container = {
+  :stats_info => stats.to_a
+}
+
+statistics_report_data(container, options[:html_file])
 
 Process.exit
