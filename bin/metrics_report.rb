@@ -50,12 +50,12 @@ def calculate_training_proteins_stats(training_proteins, stats, prefix)
 	training_proteins.each do |protID, goID, goType|
 		go_subontologies[goType] << goID
 	end
-	stats[prefix + 'total_gocc'] = go_subontologies['C'].uniq.length
-	stats[prefix + 'total_gomf'] = go_subontologies['F'].uniq.length
-	stats[prefix + 'total_gobp'] = go_subontologies['P'].uniq.length
+	stats[prefix + 'total_uniq_gocc_terms'] = go_subontologies['C'].uniq.length
+	stats[prefix + 'total_uniq_gomf_terms'] = go_subontologies['F'].uniq.length
+	stats[prefix + 'total_uniq_gobp_terms'] = go_subontologies['P'].uniq.length
 	stats[prefix + 'total_protein-gocc_relations'] = go_subontologies['C'].length
-	stats[prefix + 'total_protein-gocc_gomf'] = go_subontologies['F'].length
-	stats[prefix + 'total_protein-gocc_gobp'] = go_subontologies['P'].length
+	stats[prefix + 'total_protein-gomf_relations'] = go_subontologies['F'].length
+	stats[prefix + 'total_protein-gobp_relations'] = go_subontologies['P'].length
 end
 
 def calculate_testing_proteins_stats(testing_proteins, stats, prefix)
@@ -84,7 +84,7 @@ end
 def get_input_cafa_data(path, stats, id, loaded_data, geneAccession_protID_dictionary)		
 	training_proteins = File.join(path, 'training_proteins.txt')
 	training_proteins = load_tab_file(training_proteins)
-	prefix = id.upcase + '==training_proteins--'
+	prefix = id.upcase + '==ALL_training_proteins--'
 	calculate_training_proteins_stats(training_proteins, stats, prefix)
 	loaded_data['training_proteins'] = training_proteins
 
@@ -96,7 +96,7 @@ def get_input_cafa_data(path, stats, id, loaded_data, geneAccession_protID_dicti
 
 	testing_proteins = File.join(path, 'testing_proteins.txt')
 	testing_proteins = load_tab_file(testing_proteins)
-	prefix = id.upcase + '==testing_proteins--'
+	prefix = id.upcase + '==ALL_testing_proteins--'
 	testing_proteins.flatten!
 	calculate_testing_proteins_stats(testing_proteins, stats, prefix)
 	loaded_data['testing_proteins'] = testing_proteins
@@ -264,41 +264,47 @@ def get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary
 	#loaded_data['testing_proteins_untranslated'] = testing proteins without translation to UniProt ID
 
 	#geneAccession_protID_dictionary == {P32234 =>128UP_DROME}
+	cath_tag = nil
+	if path.include?('old')
+		cath_tag = 'OLD'
+	elsif path.include?('cur')
+		cath_tag = 'CUR'
+	end
 
 	if path.include?('human')
 		training_proteins = loaded_data['human_training_proteins'].map{|a| a.first}.uniq
 		testing_proteins = loaded_data['human_testing_proteins_translated'].uniq
 		testing_proteins_untranslated = loaded_data['human_testing_proteins_untranslated'].uniq
-		calculate_combined_stats(stats, path, loaded_data, 'human', training_proteins, testing_proteins, testing_proteins_untranslated)
+		calculate_combined_stats(stats, path, loaded_data, 'HUMAN', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
 	elsif path.include?('all')
 		training_proteins = loaded_data['training_proteins'].map{|a| a.first}.uniq
 		testing_proteins = loaded_data['testing_proteins_translated'].uniq
 		testing_proteins_untranslated = loaded_data['testing_proteins_untranslated'].uniq
-		calculate_combined_stats(stats, path, loaded_data, 'all', training_proteins, testing_proteins, testing_proteins_untranslated)
+		calculate_combined_stats(stats, path, loaded_data, 'ALL', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
 	end
 end
 
-def calculate_combined_stats(stats, path, loaded_data, organism, training_proteins, testing_proteins, testing_proteins_untranslated)
+def calculate_combined_stats(stats, path, loaded_data, organism, training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
 go_subontologies = ['GOMF', 'GOBP', 'GOCC']
 	go_subontologies.each do |go_type|
 		if path.include?('superfamilyID') && path.include?(go_type)
 			cath_proteins = loaded_data['cath_info_SF'].keys.map{|a| a.to_s}
 			# STDERR.puts cath_proteins.inspect
 			# Process.exit
-			stats["COMBINED_RESULTS==" + organism + '_superfamilyID_' + go_type + '--intersection_training_cath_SF'] = (training_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS==" + organism + '_superfamilyID_' + go_type + '--intersection_training_cath_SF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
-			stats["COMBINED_RESULTS==" + organism + 'superfamilyID_' + go_type + '--intersection_testing_cath_SF'] = (testing_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS==" + organism + 'superfamilyID_' + go_type + '--intersection_testing_cath_SF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF'] = (training_proteins & cath_proteins).length
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF'] = (testing_proteins & cath_proteins).length
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
 		elsif path.include?('funfamID') && path.include?(go_type)
 			cath_proteins = loaded_data['cath_info_FF'].keys.map{|a| a.to_s}
-			stats["COMBINED_RESULTS==" + organism + 'funfamID_' + go_type +'--intersection_training_cath_FF'] = (training_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS==" + organism + 'funfamID_' + go_type +'--intersection_training_cath_FF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
-			stats["COMBINED_RESULTS==" + organism + 'funfamID_' + go_type +'--intersection_testing_cath_FF'] = (testing_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS==" + organism + 'funfamID_' + go_type +'--intersection_testing_cath_FF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF'] = (training_proteins & cath_proteins).length
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF'] = (testing_proteins & cath_proteins).length
+			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
 		end
 	end
-	stats["COMBINED_RESULTS==" + organism + '_testing_proteins_with_geneID'] = testing_proteins.length
-	stats["COMBINED_RESULTS==" + organism + '_testing_proteins_without_geneID (%)'] = testing_proteins_untranslated.length.fdiv(testing_proteins_untranslated.length + testing_proteins.length)*100
+	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_with_geneID'] = testing_proteins.length
+	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_without_geneID (%)'] = testing_proteins_untranslated.length.fdiv(testing_proteins_untranslated.length + testing_proteins.length)*100
 end
 
 def statistics_report_data(container, html_file)
@@ -374,8 +380,9 @@ tag_path_info.each do |id, path|
 	end
 end
 
+#include this in get_combined_stats
 tag_path_info.each do |id, path|
-	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)
+	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)			
 end
 
 
@@ -386,6 +393,13 @@ File.open(options[:output_file], 'w') do |f|
 end
 
 ####- HTML REPORTING -####
+
+# stats_ary = stats.to_a
+# cafa2_human = stats_ary.select{|a| a.include?('CAFA2') && a.include?('HUMAN')}
+
+# STDERR.puts cafa2_human.class
+# Process.exit
+
 
 container = {
   :stats_info => stats.to_a
