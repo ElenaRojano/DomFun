@@ -10,6 +10,7 @@ REPORT_FOLDER=File.expand_path(File.join(File.dirname(__FILE__), '..', 'template
 ROOT_PATH = File.dirname(__FILE__)
 $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
 require 'generalMethods'
+require 'colorize'
 require 'optparse'
 require 'csv'
 require 'report_html'
@@ -28,20 +29,13 @@ def load_data(input_file)
 	return metadata
 end
 
-def load_tab_file(training_proteins)
+def load_tab_file(file)
 	tab_data = []
-	File.open(training_proteins).each do |line|
+	File.open(file).each do |line|
 		line.chomp!
 		tab_data << line.split("\t")
 	end
 	return tab_data
-end
-
-def open_file_save_array(input_file, output_array)
-	File.open(input_file).each do |line|
-		line.chomp!
-		output_array << line.split("\t")
-	end
 end
 
 def calculate_training_proteins_stats(training_proteins, testing_training_stats)
@@ -55,34 +49,32 @@ def calculate_training_proteins_stats(training_proteins, testing_training_stats)
 		annotated_proteins << [protID, goType]
 	end
 
-	testing_training_stats['training']['general_stats']['GO_terms'] = all_go_terms.uniq.length
-	testing_training_stats['training']['general_stats']['uniq_proteins'] = annotated_proteins.map{|a| a.first}.uniq.length
+	testing_training_stats['training']['general_stats']['terms'] = all_go_terms.uniq.length
+	testing_training_stats['training']['general_stats']['proteins'] = annotated_proteins.map{|a| a.first}.uniq.length
 
 	gomf_annotated_proteins = annotated_proteins.select{|a| a.last == 'F'}
 	gobp_annotated_proteins = annotated_proteins.select{|a| a.last == 'P'}
 	gocc_annotated_proteins = annotated_proteins.select{|a| a.last == 'C'}
 
-	testing_training_stats['training']['GOMF']['proteins_annotated_in_GOMF'] = gomf_annotated_proteins.uniq.length
-	testing_training_stats['training']['GOBP']['proteins_annotated_in_GOBP'] = gobp_annotated_proteins.uniq.length
-	testing_training_stats['training']['GOCC']['proteins_annotated_in_GOCC'] = gocc_annotated_proteins.uniq.length
+	testing_training_stats['training']['GOMF']['proteins'] = gomf_annotated_proteins.uniq.length
+	testing_training_stats['training']['GOBP']['proteins'] = gobp_annotated_proteins.uniq.length
+	testing_training_stats['training']['GOCC']['proteins'] = gocc_annotated_proteins.uniq.length
 	
 
-	testing_training_stats['training']['GOMF']['uniq_GOMF'] = go_subontologies['F'].uniq.length
-	testing_training_stats['training']['GOBP']['uniq_GOBP'] = go_subontologies['P'].uniq.length
-	testing_training_stats['training']['GOCC']['uniq_GOCC'] = go_subontologies['C'].uniq.length
+	testing_training_stats['training']['GOMF']['terms'] = go_subontologies['F'].uniq.length
+	testing_training_stats['training']['GOBP']['terms'] = go_subontologies['P'].uniq.length
+	testing_training_stats['training']['GOCC']['terms'] = go_subontologies['C'].uniq.length
 
 	#TODO: protein_GOMF_relations and proteins_annotated_in give the same value.
 	#Select which one to add.
-	testing_training_stats['training']['GOMF']['protein_GOMF_relations'] = go_subontologies['F'].length
-	testing_training_stats['training']['GOBP']['protein_GOBP_relations'] = go_subontologies['P'].length
-	testing_training_stats['training']['GOCC']['protein_GOCC_relations'] = go_subontologies['C'].length
+	testing_training_stats['training']['GOMF']['protein-term'] = go_subontologies['F'].length
+	testing_training_stats['training']['GOBP']['protein-term'] = go_subontologies['P'].length
+	testing_training_stats['training']['GOCC']['protein-term'] = go_subontologies['C'].length
 
 	return gomf_annotated_proteins, gobp_annotated_proteins, gocc_annotated_proteins
 end
 
 def calculate_testing_proteins_stats(testing_proteins, testing_training_stats, human_testing_training_stats, geneAccession_protID_dictionary, testing_storage)
-	#TODO CONFIRMAR QUE LAS PROTEÍNAS DE TESTING EN EL HASH CORRESPONDEN A LA REALIDAD
-	#HAY MAYOR NÚMERO DE PROTEÍNAS TRADUCIDAS QUE EN EL ARCHIVO ORIGINAL DE TESTING: ¿ES NORMAL?
 
 	testing_training_stats['testing'] = {}
 	human_testing_training_stats['testing'] = {}
@@ -133,6 +125,21 @@ def translate_protID2geneName(proteinIDs, geneAccession_protID_dictionary)
 		end
 	end	
 	return testing_proteins_translated, testing_proteins_untranslated
+end
+
+def load_network_files(input_file)
+	network_info = {}
+	File.open(input_file).each do |line|
+		line.chomp!
+		identifier, proteinID = line.split("\t")
+		query = network_info[proteinID]
+		if query.nil?
+			network_info[proteinID] = [identifier]
+		else
+			query << identifier
+		end
+	end
+	return network_info
 end
 
 def get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)
@@ -190,157 +197,112 @@ end
 
 def get_input_network_data(path, id, stats_complex)
 	#network_data = {'human' => {}, 'all' => {}}
+	if id.include?('human')
+		orgtag = 'human'
+	elsif id.include?('all')
+		orgtag = 'all'
+	end
+	network_data_complex = {orgtag => {}}
 	Dir.glob(path).each do |input_file|
+		#STDERR.puts input_file
 		if input_file.include?('superfamilyID')
-			tag = 'superfamilyID'
+			domtag = 'superfamilyID'
 		elsif input_file.include?('funfamID')
-			tag = 'funfamID'
-		end		
+			domtag = 'funfamID'
+		end
 		if input_file.include?('GOMF')
 			annot = 'GOMF'
-			#prefix = id.upcase + '==' + tag + '_' + annot + '_network--'
-			#calculate_network_stats(input_file, stats, prefix, id, loaded_data, stats_complex, tag, annot)
-			calculate_network_stats(input_file, id, stats_complex, tag, annot)
 		elsif input_file.include?('GOBP')
 			annot = 'GOBP'
-			#prefix = id.upcase + '==' + tag + '_' + annot + '_network--'
-			#calculate_network_stats(input_file, stats, prefix, id, loaded_data, stats_complex, tag, annot)
 		elsif input_file.include?('GOCC')
 			annot = 'GOCC'
-			#prefix = id.upcase + '==' + tag + '_' + annot + '_network--'
-			#calculate_network_stats(input_file, stats, prefix, id, loaded_data, stats_complex, tag, annot)
 		end
+		network_info = load_network_files(input_file)
+		calculate_network_stats(network_data_complex[orgtag], domtag, orgtag, annot, network_info)
 	end
-
-	#stats_complex['network'] = network_data
-
-end
-
-def calculate_network_stats(input_file, id, stats_complex, dom_tag, annot)
-	network_data_complex = {'human' => {}, 'all' => {}}
-	if input_file.include?('human')
-		organism_tag = 'human'
-	else
-		organism_tag = 'all'
-	end
-	network_data_complex[organism_tag] = {dom_tag => {annot => {}}}
-	network_info = {}
-	File.open(input_file).each do |line|
-		line.chomp!
-		identifier, proteinID = line.split("\t")
-		query = network_info[proteinID]
-		if query.nil?
-			network_info[proteinID] = [identifier]
-		else
-			query << identifier
-		end
-	end
-	#loaded_data['network_info'] = network_info
-	#stats[prefix + 'uniq_proteins_number'] = network_info.keys.flatten.uniq.length
-	#CHANGE TRAINING FOR NETWORK
-	#CREATE NETWORK KEY BEFORE
-	# STDERR.puts organism_tag.inspect
-	# STDERR.puts stats_complex['network'][organism_tag].inspect
-	# Process.exit
-	network_data_complex[organism_tag][dom_tag][annot]['uniq_proteins_number'] = network_info.keys.flatten.uniq.length
-	#stats[prefix + 'uniq_domains_number'] = network_info.values.flatten.select{|a| a.include?('.')}.uniq.length
-	network_data_complex[organism_tag][dom_tag][annot]['uniq_domains_number'] = network_info.values.flatten.select{|a| a.include?('.')}.uniq.length
-	#stats[prefix + 'uniq_GO_annotations_number'] = network_info.values.flatten.select{|a| a.include?('GO')}.uniq.length
-	network_data_complex[organism_tag][dom_tag][annot]['uniq_GO_annotations_number'] = network_info.values.flatten.select{|a| a.include?('GO')}.uniq.length
-	#stats[prefix + 'GO-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('GO') }.length
-	network_data_complex[organism_tag][dom_tag][annot]['GO-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('GO') }.length
-	#stats[prefix + 'domain-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('.') }.length	
-	network_data_complex[organism_tag][dom_tag][annot]['domain-proteins_relations'] = network_info.values.flatten.select {|el| el.include?('.') }.length
-	#stats[prefix + 'total_domain/GO-protein_relations'] = network_info.values.flatten.length
-	network_data_complex[organism_tag][dom_tag][annot]['total_domain/GO-protein_relations'] = network_info.values.flatten.length
-
 	stats_complex['network'] = network_data_complex
-	STDERR.puts JSON.pretty_generate(stats_complex)
-	Process.exit
 end
 
+def calculate_network_stats(network_data_complex, domtag, orgtag, annot, network_info)
+	query_domtag = attrib_to_hash(network_data_complex, domtag, {annot => {}})
+	query_annot = attrib_to_hash(query_domtag, annot)
+	values_flatten = network_info.values.flatten
+	query_annot['proteins'] = network_info.keys.flatten.uniq.length
+	query_annot['domains'] = values_flatten.select{|a| a.include?('.')}.uniq.length
+	query_annot['terms'] = values_flatten.select{|a| a.include?('GO')}.uniq.length
+	query_annot['term-protein'] = values_flatten.select {|el| el.include?('GO') }.length
+	query_annot['domain-protein'] = values_flatten.select {|el| el.include?('.') }.length
+end
 
+def attrib_to_hash(hash, key, value={})
+	query = hash[key]
+	if query.nil?
+		query = value
+		hash[key] = query
+	end
+	return query
+end
 
 #Note: associations, predictions and normalized predictions
 #load file are under the same method.
 #Stats calculation has been joined in the same method aw.
-def get_input_assoc_predictions_data(path, stats, id, info_string, loaded_data, stats_complex)
+def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 	assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
-	if info_string == '_assocs--'
-		mode = 'associations'
-	elsif info_string == '_preds--'
-		mode = 'predictions'
-	elsif info_string == '_norm_preds--'
-		mode = 'norm_predictions'
-	end		
+	if id.include?('human')
+		orgtag = 'human'
+	elsif id.include?('all')
+		orgtag = 'all'
+	end
+	
 	Dir.glob(path).each do |input_file|
-		assoc_methods.each do |assoc_method|		
-			if input_file.include?('superfamilyID')
-				if input_file.include?('GOMF') && input_file.include?(assoc_method)
-					prefix = id.upcase + '==superfamily_GOMF_' + assoc_method + info_string
-					calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
-				elsif input_file.include?('GOBP') && input_file.include?(assoc_method)
-					prefix = id.upcase + '==superfamily_GOBP_' + assoc_method + info_string
- 					calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
-				elsif input_file.include?('GOCC') && input_file.include?(assoc_method)
-					prefix = id.upcase + '==superfamily_GOCC' + assoc_method + info_string
-					calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
-				end
-			end
-		end	
+		stats = {}
+		assoc_method = assoc_methods.select{|am| input_file.include?(am)}.first	
+		if input_file.include?('superfamilyID')
+			domtag = 'superfamilyID'
+		elsif input_file.include?('funfamID')
+			domtag = 'funfamID'
+		end
+		if input_file.include?('GOMF')
+			annot = 'GOMF'
+		elsif input_file.include?('GOBP')
+			annot = 'GOBP'
+		elsif input_file.include?('GOCC')
+			annot = 'GOCC'
+		end
+		file_info = load_tab_file(input_file)
+		calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
+		stats_complex[mode] = stats
 	end
 end
 
-def calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
-	file_info = []
-	open_file_save_array(input_file, file_info)
-	if mode == 'associations'
-		loaded_data['associations_info'] = file_info
-		stats[prefix + 'GO-domain_relations_number'] = file_info.length
-		stats[prefix + 'GO_number'] = file_info.map{|a| a.first}.uniq.length
-		stats[prefix + 'domain_number'] = file_info.map{|a| a[1]}.uniq.length
-		stats[prefix + 'max_assoc_val'] = file_info.map{|a| a.last}.max
-		stats[prefix + 'min_assoc_val'] = file_info.map{|a| a.last}.min
+#def calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
+def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, annotation_info_complex)
+	query_orgtag = attrib_to_hash(annotation_info_complex, orgtag, {domtag => {}})
+	query_domtag = attrib_to_hash(query_orgtag, domtag, {annot => {}})
+	query_annot = attrib_to_hash(query_domtag, annot, {assoc_method => {}})
+	query_assoc = attrib_to_hash(query_annot, assoc_method)
+
+	if mode == 'assocs'
+		query_assoc['term-domain'] = file_info.length
+		query_assoc['terms'] = file_info.map{|a| a.first}.uniq.length
+		query_assoc['domains'] = file_info.map{|a| a[1]}.uniq.length
+		query_assoc['max_assoc_val'] = file_info.map{|a| a.last}.max
+		query_assoc['min_assoc_val'] = file_info.map{|a| a.last}.min
 		assoc_vals = file_info.map{|a| a.last.to_f}
-		stats[prefix + 'ave_assoc_val'] = assoc_vals.inject { |sum, n| sum + n }.fdiv(assoc_vals.length)
-	elsif mode == 'predictions'
-		loaded_data['predictions_info'] = file_info
-		stats[prefix + 'predicted_proteins'] = file_info.map{|a| a.first}.uniq.length
-		stats[prefix + 'total_GOs_predicted'] = file_info.map{|a| a[2]}.uniq.length
-		stats[prefix + 'total_domains'] = file_info.map{|a| a[1].split(',')}.flatten.uniq.length
-		stats[prefix + 'max_pred_val'] = file_info.map{|a| a.last}.max
-		stats[prefix + 'min_pred_val'] = file_info.map{|a| a.last}.min
+		query_assoc['ave_assoc_val'] = assoc_vals.inject { |sum, n| sum + n }.fdiv(assoc_vals.length)
+	elsif mode == 'preds' || mode == 'norm_preds'
+		query_assoc['proteins'] = file_info.map{|a| a.first}.uniq.length
+		query_assoc['terms'] = file_info.map{|a| a[2]}.uniq.length
+		query_assoc['domains'] = file_info.map{|a| a[1].split(',')}.flatten.uniq.length
+		query_assoc['max_pred_val'] = file_info.map{|a| a.last}.max
+		query_assoc['min_pred_val'] = file_info.map{|a| a.last}.min
 		pred_vals = file_info.map{|a| a.last.to_f}
-		stats[prefix + 'ave_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
-	elsif mode == 'norm_predictions'
-		#Norm predictions max value are wrong (gets scientific annotation like: 9.101087297347377e-06 as max)
-		#See how to correct it
-		loaded_data['normalized_predictions_info'] = file_info
-		stats[prefix + 'predicted_proteins_after_norm'] = file_info.map{|a| a.first}.uniq.length
-		stats[prefix + 'total_GOs_predicted_after_norm'] = file_info.map{|a| a[2]}.uniq.length
-		stats[prefix + 'total_domains_after_norm'] = file_info.map{|a| a[1].split(',')}.flatten.uniq.length
-		stats[prefix + 'max_norm_pred_val'] = file_info.map{|a| a.last}.max
-		stats[prefix + 'min_norm_pred_val'] = file_info.map{|a| a.last}.min
-		pred_vals = file_info.map{|a| a.last.to_f}
-		stats[prefix + 'ave_norm_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
+		query_assoc['ave_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
 	end
 end
 
+#TODO: CHANGE THIS METHOD TO THE NEW SYSTEM:
 def get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)
-	#loaded_data['associations_info'] = asociaciones
-	#loaded_data['predictions_info']	= predicciones
-	#loaded_data['normalized_predictions_info'] = predicciones normalizadas
-	#loaded_data['network_info'] = informacion_red
-	#loaded_data['training_proteins'] = CAFA training
-	#loaded_data['training_proteins_human'] = CAFA training_human
-	#loaded_data['testing_proteins'] = CAFA testing (in gene accession ID)
-	#loaded_data['testing_proteins_translated'] = testing proteins in proteinID
-	#loaded_data['cath_info_SF'] = CATH info (SF)
-	#loaded_data['cath_info_FF'] = CATH info (FF)
-	#loaded_data['testing_proteins_translated'] = testing proteins translated to UniProt ID
-	#loaded_data['testing_proteins_untranslated'] = testing proteins without translation to UniProt ID
-
-	#geneAccession_protID_dictionary == {P32234 =>128UP_DROME}
 	cath_tag = nil
 	if path.include?('old')
 		cath_tag = 'OLD'
@@ -433,9 +395,7 @@ end.parse!
 ##########################
 
 tag_path_info = load_data(options[:input_file])
-stats = {}
 stats_complex = {}
-loaded_data ={}
 geneAccession_protID_dictionary = {}
 training_storage = {}
 testing_storage = {}
@@ -450,21 +410,24 @@ tag_path_info.each do |id, path|
 	elsif id.include?('input_networks')
 		get_input_network_data(path, id, stats_complex)
 	elsif id.include?('input_associations')
-		info_string = '_assocs--'
-		get_input_assoc_predictions_data(path, stats, id, info_string, loaded_data, stats_complex)
+		info_string = 'assocs'
+		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
 	elsif id.include?('input_predictions')
-		info_string = '_preds--'
-		get_input_assoc_predictions_data(path, stats, id, info_string, loaded_data, stats_complex)
+		info_string = 'preds'
+		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
 	elsif id.include?('input_normpreds')
-		info_string = info_string = '_norm_preds--'
-		get_input_assoc_predictions_data(path, stats, id, info_string, loaded_data, stats_complex)
+		info_string = 'norm_preds'
+		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
 	end
 end
 
 #include this in get_combined_stats
-tag_path_info.each do |id, path|
-	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)			
-end
+# tag_path_info.each do |id, path|
+# 	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)			
+# end
+
+STDERR.puts JSON.pretty_generate(stats_complex)
+Process.exit
 
 
 File.open(options[:output_file], 'w') do |f|
@@ -481,8 +444,8 @@ end
 # STDERR.puts cafa2_human.class
 # Process.exit
 
-STDERR.puts JSON.pretty_generate(stats_complex)
-Process.exit
+# STDERR.puts JSON.pretty_generate(stats_complex)
+# Process.exit
 
 container = {
   :stats_info => stats.to_a

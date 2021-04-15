@@ -45,5 +45,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "terminal-table", ">= 2.0.0"
   spec.add_dependency "report_html", ">= 0.4.3"
   spec.add_dependency "parallel"
+  spec.add_dependency "colorize"
 
 end
