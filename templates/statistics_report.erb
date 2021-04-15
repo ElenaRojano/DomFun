@@ -1,9 +1,6 @@
 <div style="width: 90%; background-color:#ecf0f1; margin: 0 auto;"> 
-    <h1 style="text-align: center; background-color:#d6eaf8">Basic statistics table</h1>
+    <h1 style="text-align: center; background-color:#d6eaf8">Graphic</h1>
     <%=
-    table(id: :stats_info, header: true, styled: 'dt', 
-        cell_align: %w(left center ), attrib: {'class' => 'table table-striped'}) do |data_array|
-            data_array.unshift(['Name', 'Value'])
-    end
+    line(id: :go_profile, header: true, config: {'graphOrientation' => 'vertical'})
     %>
 </div>

@@ -16,6 +16,11 @@ require 'csv'
 require 'report_html'
 require 'json'
 
+
+@assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
+@terms = ['GOMF', 'GOBP', 'GOCC']
+@domains = ['superfamilyID', 'funfamID']
+
 ##########################
 #METHODS
 ##########################
@@ -247,7 +252,6 @@ end
 #load file are under the same method.
 #Stats calculation has been joined in the same method aw.
 def get_input_assoc_predictions_data(path, id, mode, stats_complex)
-	assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
 	if id.include?('human')
 		orgtag = 'human'
 	elsif id.include?('all')
@@ -256,7 +260,7 @@ def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 	
 	Dir.glob(path).each do |input_file|
 		stats = {}
-		assoc_method = assoc_methods.select{|am| input_file.include?(am)}.first	
+		assoc_method = @assoc_methods.select{|am| input_file.include?(am)}.first	
 		if input_file.include?('superfamilyID')
 			domtag = 'superfamilyID'
 		elsif input_file.include?('funfamID')
@@ -426,31 +430,29 @@ end
 # 	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)			
 # end
 
-STDERR.puts JSON.pretty_generate(stats_complex)
-Process.exit
 
 
-File.open(options[:output_file], 'w') do |f|
-	stats.each do |stat, values|
-		f.puts "#{stat}\t#{values}"
-	end
+
+
+############################################
+
+#STDERR.puts JSON.pretty_generate(stats_complex)
+
+
+training_gos = ['training']
+network_gos = ['network']
+assoc_gos = ['association']
+
+go_profile = [['GO'] + @terms, training_gos, network_gos, assoc_gos]
+
+@terms.each do |term|
+	training_gos << stats_complex.dig('cafa', 'human', 'training', term, 'terms')
+	network_gos << stats_complex.dig('network', 'human', 'superfamilyID', term, 'terms')
+	assoc_gos << stats_complex.dig('assocs', 'human', 'superfamilyID', term, 'jaccard', 'terms')
 end
 
-####- HTML REPORTING -####
-
-# stats_ary = stats.to_a
-# cafa2_human = stats_ary.select{|a| a.include?('CAFA2') && a.include?('HUMAN')}
-
-# STDERR.puts cafa2_human.class
-# Process.exit
-
-# STDERR.puts JSON.pretty_generate(stats_complex)
-# Process.exit
-
 container = {
-  :stats_info => stats.to_a
+  :go_profile => go_profile
 }
 
 statistics_report_data(container, options[:html_file])
-
-Process.exit
