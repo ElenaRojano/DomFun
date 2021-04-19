@@ -16,7 +16,6 @@ require 'csv'
 require 'report_html'
 require 'json'
 
-
 @assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
 @terms = ['GOMF', 'GOBP', 'GOCC']
 @domains = ['superfamilyID', 'funfamID']
@@ -48,6 +47,9 @@ def calculate_training_proteins_stats(training_proteins, testing_training_stats)
 	go_subontologies = {'C' => [], 'F' => [], 'P' => []}
 	all_go_terms = []
 	annotated_proteins = []
+	gomf_annotated_proteins = []
+	gobp_annotated_proteins = []
+	gocc_annotated_proteins = []
 	training_proteins.each do |protID, goID, goType|
 		go_subontologies[goType] << goID
 		all_go_terms << goID
@@ -57,9 +59,15 @@ def calculate_training_proteins_stats(training_proteins, testing_training_stats)
 	testing_training_stats['training']['general_stats']['terms'] = all_go_terms.uniq.length
 	testing_training_stats['training']['general_stats']['proteins'] = annotated_proteins.map{|a| a.first}.uniq.length
 
-	gomf_annotated_proteins = annotated_proteins.select{|a| a.last == 'F'}
-	gobp_annotated_proteins = annotated_proteins.select{|a| a.last == 'P'}
-	gocc_annotated_proteins = annotated_proteins.select{|a| a.last == 'C'}
+	training_proteins.each do |training_protein_data|
+		if training_protein_data.last == 'F'
+			gomf_annotated_proteins << training_protein_data[0..1]
+		elsif  training_protein_data.last == 'P'
+			gobp_annotated_proteins << training_protein_data[0..1]
+		elsif training_protein_data.last == 'C'
+			gocc_annotated_proteins << training_protein_data[0..1]
+		end
+	end
 
 	testing_training_stats['training']['GOMF']['proteins'] = gomf_annotated_proteins.uniq.length
 	testing_training_stats['training']['GOBP']['proteins'] = gobp_annotated_proteins.uniq.length
@@ -103,7 +111,6 @@ def calculate_testing_proteins_stats(testing_proteins, testing_training_stats, h
 	testing_storage['all'] = all_testing_proteins_translated
 
 end
-
 
 def calculate_cath_stats(cath_info_domains, id, domain_type, domains_stats)
 	#Leave this method in case you need to add more stats
@@ -150,8 +157,10 @@ end
 def get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)
 	all_testing_training_stats = {'testing' => {}, 'training' => {}}
 	human_testing_training_stats = {'testing' => {}, 'training' => {}}
-	training_storage = {'human' => {'GOMF' => [], 'GOBP' => [], 'GOCC' => []}, 'all' => {'GOMF' => [], 'GOBP' => [], 'GOCC' => []}}
-	testing_storage = {'human' => [], 'all' => []}
+	training_storage['human'] = {'GOMF' => [], 'GOBP' => [], 'GOCC' => []}
+	training_storage['all'] = {'GOMF' => [], 'GOBP' => [], 'GOCC' => []}
+	testing_storage['human'] = [] 
+	testing_storage['all'] = []
 
 	training_proteins = File.join(path, 'training_proteins.txt')
 	training_proteins = load_tab_file(training_proteins)
@@ -179,20 +188,22 @@ def get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex
 
 end
 
-def get_input_CATH_data(path, id, stats_complex)
+def get_input_CATH_data(path, id, stats_complex, cath_storage)
 	#cath_info_SF == {:ProtID => ["SFid1", "SFid2"]}
 	#protein2gene_dict_SF == {:ProtID => "GeneName"}
-	#cath_proteins_number == 38581 (TOTAL PROTEINS WITH DOMAINS ANNOTATIONS)
-	
+	#Only 1 CATH version for execution
+
 	superfamily_ID = 'superfamilyID'
 	funfam_ID = 'funfamID'
 	domains_stats = {superfamily_ID => {}, funfam_ID => {}}
 
 	cath_info_SF, protein2gene_dict, cath_proteins_number = load_cath_data(path, superfamily_ID, whitelist=nil, dictionary_key='gene_name')	
 	calculate_cath_stats(cath_info_SF, id, superfamily_ID, domains_stats)	
+	cath_storage['superfamilyID'] = cath_info_SF
 
 	cath_info_FF, protein2gene_dict, cath_proteins_number = load_cath_data(path, funfam_ID, whitelist=nil, dictionary_key='gene_name')
 	calculate_cath_stats(cath_info_FF, id, funfam_ID, domains_stats)
+	cath_storage['funfamID'] = cath_info_SF
 	
 	domains_stats['CATH_proteins_number'] = cath_proteins_number
 
@@ -258,8 +269,8 @@ def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 		orgtag = 'all'
 	end
 	
+	stats = {}
 	Dir.glob(path).each do |input_file|
-		stats = {}
 		assoc_method = @assoc_methods.select{|am| input_file.include?(am)}.first	
 		if input_file.include?('superfamilyID')
 			domtag = 'superfamilyID'
@@ -275,17 +286,17 @@ def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 		end
 		file_info = load_tab_file(input_file)
 		calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
-		stats_complex[mode] = stats
 	end
+	stats_complex[mode] = stats
 end
 
 #def calculate_stats(input_file, stats, prefix, id, mode, loaded_data)
-def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, annotation_info_complex)
-	query_orgtag = attrib_to_hash(annotation_info_complex, orgtag, {domtag => {}})
+def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
+	query_orgtag = attrib_to_hash(stats, orgtag, {domtag => {}})
 	query_domtag = attrib_to_hash(query_orgtag, domtag, {annot => {}})
 	query_annot = attrib_to_hash(query_domtag, annot, {assoc_method => {}})
 	query_assoc = attrib_to_hash(query_annot, assoc_method)
-
+	### ERROR A LA HORA DE SALVAR EL TIPO DE GO
 	if mode == 'assocs'
 		query_assoc['term-domain'] = file_info.length
 		query_assoc['terms'] = file_info.map{|a| a.first}.uniq.length
@@ -306,50 +317,68 @@ def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, annota
 end
 
 #TODO: CHANGE THIS METHOD TO THE NEW SYSTEM:
-def get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)
-	cath_tag = nil
-	if path.include?('old')
-		cath_tag = 'OLD'
-	elsif path.include?('cur')
-		cath_tag = 'CUR'
-	end
 
-	if path.include?('human')
-		# 14/04 -> continuar para solucionar el problema de las relaciones go-prot del training
-		# STDERR.puts loaded_data['human_training_proteins'].inspect
-		# Process.exit
-		training_proteins = loaded_data['human_training_proteins'].map{|a| a.first}.uniq
-		testing_proteins = loaded_data['human_testing_proteins_translated'].uniq
-		testing_proteins_untranslated = loaded_data['human_testing_proteins_untranslated'].uniq
-		calculate_combined_stats(stats, path, loaded_data, 'HUMAN', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
-	elsif path.include?('all')
-		training_proteins = loaded_data['training_proteins'].map{|a| a.first}.uniq
-		testing_proteins = loaded_data['testing_proteins_translated'].uniq
-		testing_proteins_untranslated = loaded_data['testing_proteins_untranslated'].uniq
-		calculate_combined_stats(stats, path, loaded_data, 'ALL', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
-	end
-end
+def get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)
+	# Calculate intersection between cath protein domains and training proteins
 
-def calculate_combined_stats(stats, path, loaded_data, organism, training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
-go_subontologies = ['GOMF', 'GOBP', 'GOCC']
-	go_subontologies.each do |go_type|
-		if path.include?('superfamilyID') && path.include?(go_type)
-			cath_proteins = loaded_data['cath_info_SF'].keys.map{|a| a.to_s}
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF'] = (training_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF'] = (testing_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
-		elsif path.include?('funfamID') && path.include?(go_type)
-			cath_proteins = loaded_data['cath_info_FF'].keys.map{|a| a.to_s}
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF'] = (training_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF'] = (testing_proteins & cath_proteins).length
-			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
+	@domains.each do |domtag|
+		cath_proteins = cath_storage[domtag].transform_keys{|a| a.to_s}
+		training_storage.each do |orgtag, go_type_info|
+			go_type_info.each do |annot, info|
+				query_orgtag = attrib_to_hash(combined_stats, orgtag, {annot => {}})
+				query_annot = attrib_to_hash(query_orgtag, annot, {domtag => {}})
+				query_domtag = attrib_to_hash(query_annot, domtag)
+				training_proteins = []
+				query_proteins = []
+				info.each do |protein, goID|
+					training_proteins << protein
+					query_proteins << cath_proteins[protein] unless cath_proteins[protein].nil?
+				end
+				query_domtag['proteins'] = query_proteins.length
+				query_domtag['lost_proteins(%)'] = (training_proteins.length - query_proteins.length) * 100.fdiv(training_proteins.length)
+			end
 		end
 	end
-	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_with_geneID'] = testing_proteins.length
-	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_without_geneID (%)'] = testing_proteins_untranslated.length.fdiv(testing_proteins_untranslated.length + testing_proteins.length)*100
 end
+
+# def get_combined_stats(cath_storage, training_storage, testing_storage)
+
+# 	if path.include?('human')
+# 		# 14/04 -> continuar para solucionar el problema de las relaciones go-prot del training
+# 		# STDERR.puts loaded_data['human_training_proteins'].inspect
+# 		# Process.exit
+# 		training_proteins = loaded_data['human_training_proteins'].map{|a| a.first}.uniq
+# 		testing_proteins = loaded_data['human_testing_proteins_translated'].uniq
+# 		testing_proteins_untranslated = loaded_data['human_testing_proteins_untranslated'].uniq
+# 		calculate_combined_stats(stats, path, loaded_data, 'HUMAN', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
+# 	elsif path.include?('all')
+# 		training_proteins = loaded_data['training_proteins'].map{|a| a.first}.uniq
+# 		testing_proteins = loaded_data['testing_proteins_translated'].uniq
+# 		testing_proteins_untranslated = loaded_data['testing_proteins_untranslated'].uniq
+# 		calculate_combined_stats(stats, path, loaded_data, 'ALL', training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
+# 	end
+# end
+
+# def calculate_combined_stats(stats, path, loaded_data, organism, training_proteins, testing_proteins, testing_proteins_untranslated, cath_tag)
+# go_subontologies = ['GOMF', 'GOBP', 'GOCC']
+# 	go_subontologies.each do |go_type|
+# 		if path.include?('superfamilyID') && path.include?(go_type)
+# 			cath_proteins = loaded_data['cath_info_SF'].keys.map{|a| a.to_s}
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF'] = (training_proteins & cath_proteins).length
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_training_cath_SF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF'] = (testing_proteins & cath_proteins).length
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==superfamilyID_" + go_type + '--intersection_testing_cath_SF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
+# 		elsif path.include?('funfamID') && path.include?(go_type)
+# 			cath_proteins = loaded_data['cath_info_FF'].keys.map{|a| a.to_s}
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF'] = (training_proteins & cath_proteins).length
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_training_cath_FF (%)'] = (training_proteins & cath_proteins).length.fdiv(training_proteins.length)*100
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF'] = (testing_proteins & cath_proteins).length
+# 			stats["COMBINED_RESULTS" + '_' + cath_tag + '_' + organism + "==funfamID_" + go_type +'--intersection_testing_cath_FF (%)'] = (testing_proteins & cath_proteins).length.fdiv(testing_proteins.length)*100
+# 		end
+# 	end
+# 	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_with_geneID'] = testing_proteins.length
+# 	stats["COMBINED_RESULTS_" + organism + '==testing_proteins_without_geneID (%)'] = testing_proteins_untranslated.length.fdiv(testing_proteins_untranslated.length + testing_proteins.length)*100
+# end
 
 def statistics_report_data(container, html_file)
 	template = File.open(File.join(REPORT_FOLDER, 'statistics_report.erb')).read
@@ -403,6 +432,8 @@ stats_complex = {}
 geneAccession_protID_dictionary = {}
 training_storage = {}
 testing_storage = {}
+cath_storage = {}
+combined_stats = {}
 
 load_geneAccession_protID_dictionary(options[:accessionID_dictionary], geneAccession_protID_dictionary)
 
@@ -410,49 +441,57 @@ tag_path_info.each do |id, path|
 	if id.include?('input_cafa')
 		get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)
 	elsif id.include?('input_cath')
-		get_input_CATH_data(path, id, stats_complex)
+		get_input_CATH_data(path, id, stats_complex, cath_storage)
 	elsif id.include?('input_networks')
 		get_input_network_data(path, id, stats_complex)
-	elsif id.include?('input_associations')
-		info_string = 'assocs'
-		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
-	elsif id.include?('input_predictions')
-		info_string = 'preds'
-		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
-	elsif id.include?('input_normpreds')
-		info_string = 'norm_preds'
-		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
+	# elsif id.include?('input_associations')
+	# 	info_string = 'assocs'
+	# 	get_input_assoc_predictions_data(path, id, info_string, stats_complex)
+	# elsif id.include?('input_predictions')
+	# 	info_string = 'preds'
+	# 	get_input_assoc_predictions_data(path, id, info_string, stats_complex)
+	# elsif id.include?('input_normpreds')
+	# 	info_string = 'norm_preds'
+	# 	get_input_assoc_predictions_data(path, id, info_string, stats_complex)
 	end
 end
 
-#include this in get_combined_stats
-# tag_path_info.each do |id, path|
-# 	get_combined_stats(loaded_data, stats, path, geneAccession_protID_dictionary)			
-# end
-
-
-
-
+get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)
 
 ############################################
-
 #STDERR.puts JSON.pretty_generate(stats_complex)
+#STDERR.puts JSON.pretty_generate(combined_stats)
+#Process.exit
 
 
-training_gos = ['training']
-network_gos = ['network']
-assoc_gos = ['association']
+cafa_proteins = ['cafa_proteins']
+cafa_superfamilyID = ['cafa_superfamilyID']
+cafa_funfamID = ['cafa_funfamID']
 
-go_profile = [['GO'] + @terms, training_gos, network_gos, assoc_gos]
+protein_recovery = [['GO'] + @terms, cafa_proteins, cafa_superfamilyID, cafa_funfamID]
+
 
 @terms.each do |term|
-	training_gos << stats_complex.dig('cafa', 'human', 'training', term, 'terms')
-	network_gos << stats_complex.dig('network', 'human', 'superfamilyID', term, 'terms')
-	assoc_gos << stats_complex.dig('assocs', 'human', 'superfamilyID', term, 'jaccard', 'terms')
+	cafa_proteins << training_storage.dig('human', term).map{|a| a.first}.length
+	cafa_superfamilyID << combined_stats.dig('human', term, 'superfamilyID', 'proteins')
+	cafa_funfamID << combined_stats.dig('human', term, 'funfamID', 'proteins')
 end
 
+# training_gos = ['training']
+# network_gos = ['network']
+# assoc_gos = ['association']
+
+# go_profile = [['GO'] + @terms, training_gos, network_gos, assoc_gos]
+
+# @terms.each do |term|
+# 	training_gos << stats_complex.dig('cafa', 'human', 'training', term, 'terms')
+# 	network_gos << stats_complex.dig('network', 'human', 'superfamilyID', term, 'terms')
+# 	assoc_gos << stats_complex.dig('assocs', 'human', 'superfamilyID', term, 'jaccard', 'terms')
+# end
+
 container = {
-  :go_profile => go_profile
+  #:go_profile => go_profile
+  :protein_recovery => protein_recovery
 }
 
 statistics_report_data(container, options[:html_file])
