@@ -3,8 +3,10 @@
     <h2 style="text-align: center; background-color:#d6eaf8">Number of proteins</h2>
 	<p>Number of CAFA training proteins with annotations in GO molecular functions (GOMF), GO biological process (GOBP) and GO cellular component (GOCC), and of these which ones have domains classified as both superfamily and FunFam.</p>
 	<%= 
-    <%=
-    line(id: :protein_recovery, header: true, config: {'graphOrientation' => 'vertical'})
+    line(id: 'human_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'})
+    %>	
+    <%= 
+    line(id: 'all_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'})
     %>
 </div>
 
@@ -12,7 +14,12 @@
 <h2 style="text-align: center; background-color:#d6eaf8">Number of domain-function connections for each network.</h2>
 <p>Includes functional annotation data from CAFA 2 with protein domain data from CATH-Gene3D (superfamilies and FunFams).</p>
 	<%= 
-	table(id: :domain_term_relations, header: true, border: 2, 
+	table(id: 'human_domain_term', header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+	end
+	%>
+	<%= 
+	table(id: 'all_domain_term', header: true, border: 2, 
 		cell_align: %w(center, center center center center)) do |data|
 	end
 	%>
