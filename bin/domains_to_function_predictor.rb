@@ -259,7 +259,7 @@ pt_white_list = {}
 options[:proteins_2predict].each do |pt|
   pt_white_list[pt] = true
 end
-cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:protein_domains_file], options[:domain_category], pt_white_list)
+cath_data, protein2gene, cath_proteins_number, cath_data_supp = load_cath_data(options[:protein_domains_file], options[:domain_category], pt_white_list)
 pt_white_list = nil
 
 # 3. Load domain-FunSys associations

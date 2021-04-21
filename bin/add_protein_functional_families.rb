@@ -120,7 +120,7 @@ end.parse!
 ##########################
 
 puts "Loading data..."
-cath_data, protein2gene, cath_proteins_number = load_cath_data(options[:input_domains], options[:category_type])
+cath_data, protein2gene, cath_proteins_number, cath_data_supp = load_cath_data(options[:input_domains], options[:category_type])
 nomenclature_annotations, number_of_proteins = load_proteins_file(options[:input_annotations], options[:annotation_types])
 
 networks_path = nil

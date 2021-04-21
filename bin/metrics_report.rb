@@ -15,6 +15,7 @@ require 'optparse'
 require 'csv'
 require 'report_html'
 require 'json'
+require 'benchmark'
 
 @assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
 @terms = ['GOMF', 'GOBP', 'GOCC']
@@ -110,9 +111,9 @@ def calculate_testing_proteins_stats(testing_proteins, testing_training_stats, h
 
 end
 
-def calculate_cath_stats(cath_info_domains, id, domain_type, domains_stats)
+def calculate_cath_stats(cath_info_domains, id, domains_stats)
 	#Leave this method in case you need to add more stats
-	domains_stats[domain_type]['number'] = cath_info_domains.values.uniq.length
+	domains_stats['number'] = cath_info_domains.values.uniq.length
 end
 
 def load_geneAccession_protID_dictionary(dictionary_file, geneAccession_protID_dictionary)
@@ -187,19 +188,18 @@ def get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex
 end
 
 def get_input_CATH_data(path, id, stats_complex, cath_storage)
-	superfamily_ID = 'superfamilyID'
-	funfam_ID = 'funfamID'
-	domains_stats = {superfamily_ID => {}, funfam_ID => {}}
-
-	cath_info_SF, protein2gene_dict, cath_proteins_number = load_cath_data(path, superfamily_ID, whitelist=nil, dictionary_key='gene_name')	
-	calculate_cath_stats(cath_info_SF, id, superfamily_ID, domains_stats)	
-	cath_storage['superfamilyID'] = cath_info_SF
-
-	cath_info_FF, protein2gene_dict, cath_proteins_number = load_cath_data(path, funfam_ID, whitelist=nil, dictionary_key='gene_name')
-	calculate_cath_stats(cath_info_FF, id, funfam_ID, domains_stats)
-	cath_storage['funfamID'] = cath_info_SF
-	
-	domains_stats['CATH_proteins_number'] = cath_proteins_number
+	domains_stats = {}
+	domtag = @domains.first
+	cath_info, protein2gene_dict, cath_proteins_number, cath_info_supp = load_cath_data(path, domtag, whitelist=nil, dictionary_key='gene_name', categories='all')	
+	cath_all = [cath_info, cath_info_supp]
+	@domains.each_with_index do |domtag, i|
+		cath_data = cath_all[i]
+		stats = {}
+		calculate_cath_stats(cath_data, id, stats)
+		cath_storage[domtag] = cath_data
+		domains_stats['CATH_proteins_number'] = cath_proteins_number
+		domains_stats[domtag] = stats
+	end
 	stats_complex['domains'] = domains_stats
 end
 
@@ -208,8 +208,8 @@ def get_input_network_data(path, id, stats_complex)
 	@organisms.each do |orgtag|
 		network_data_complex[orgtag] = {}
 		Dir.glob(path).each do |input_file|
-			domtag = @domains.select{|am| input_file.include?(am)}.first
-			annot = @terms.select{|am| input_file.include?(am)}.first
+			domtag = obtain_tag(@domains, input_file)	
+			annot = obtain_tag(@terms, input_file)	
 			network_info = load_network_files(input_file)
 			calculate_network_stats(network_data_complex[orgtag], domtag, orgtag, annot, network_info)
 		end
@@ -223,21 +223,30 @@ def calculate_network_stats(network_data_complex, domtag, orgtag, annot, network
 	network_info_values = network_info.values
 	values_flatten = network_info_values.flatten
 	query_annot['proteins'] = network_info.keys.flatten.uniq.length
-	query_annot['domains'] = values_flatten.select{|a| a.include?('.')}.uniq.length
-	query_annot['terms'] = values_flatten.select{|a| a.include?('GO')}.uniq.length
-	query_annot['term-protein'] = values_flatten.select {|el| el.include?('GO') }.length
-	query_annot['domain-protein'] = values_flatten.select {|el| el.include?('.') }.length
-	query_annot['domain-term'] = calculate_domain_term_relations(network_info_values)
+	query_annot['domains'] = select_char(values_flatten, '.', true)
+	query_annot['terms'] = select_char(values_flatten, 'GO:', true)
+	query_annot['term-protein'] = select_char(values_flatten, 'GO:')
+	query_annot['domain-protein'] = select_char(values_flatten, '.')
+	query_annot['domain-term'] = calculate_domain_term_relations(network_info_values, 'GO:', '.')
 end
 
-def calculate_domain_term_relations(network_info_values)
+def calculate_domain_term_relations(network_info_values, annot_str, domain_str)
 	value = 0
 	network_info_values.each do |domain_go_relations|
-		domains = domain_go_relations.select{|a| a.include?('.')}.length
-		gos = domain_go_relations.select{|a| a.include?('GO:')}.length
+		domains = select_char(domain_go_relations, domain_str)
+		gos = select_char(domain_go_relations, annot_str)
 		value += domains * gos
 	end
 	return value
+end
+
+def select_char(var, char, uniq=false)
+	if uniq == false
+		result = var.select{|a| a.include?(char)}.length
+	else
+		result = var.select{|a| a.include?(char)}.uniq.length
+	end
+	return result
 end
 
 def attrib_to_hash(hash, key, value={})
@@ -252,9 +261,9 @@ end
 def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 	stats = {}
 	Dir.glob(path).each do |input_file|
-		assoc_method = @assoc_methods.select{|am| input_file.include?(am)}.first	
-		domtag = @domains.select{|am| input_file.include?(am)}.first
-		annot = @terms.select{|am| input_file.include?(am)}.first
+		assoc_method = obtain_tag(@assoc_methods, input_file)	
+		domtag = obtain_tag(@domains, input_file)
+		annot = obtain_tag(@terms, input_file)
 		file_info = load_tab_file(input_file)
 		@organisms.each do |orgtag|
 			calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
@@ -263,31 +272,56 @@ def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 	stats_complex[mode] = stats
 end
 
+def obtain_tag(options, string)
+	tag = options.select{|am| string.include?(am)}.first	
+	return tag
+end
+
 def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
 	query_orgtag = attrib_to_hash(stats, orgtag, {domtag => {}})
 	query_domtag = attrib_to_hash(query_orgtag, domtag, {annot => {}})
 	query_annot = attrib_to_hash(query_domtag, annot, {assoc_method => {}})
 	query_assoc = attrib_to_hash(query_annot, assoc_method)
 	if mode == 'assocs'
+		annot_ids = {}
+		domain_ids = {}
+		assoc_vals = []
+		total_assocs = 0
+		file_info.each do |annotation, domain_string, assoc_val|
+			annot_ids[annotation] = true
+			domain_ids[domain_string] = true
+			assoc_val = assoc_val.to_f
+			total_assocs += assoc_val
+			assoc_vals << assoc_val
+		end
 		query_assoc['term-domain'] = file_info.length
-		query_assoc['terms'] = file_info.map{|a| a.first}.uniq.length
-		query_assoc['domains'] = file_info.map{|a| a[1]}.uniq.length
-		assoc_vals = file_info.map{|a| a.last.to_f}
+		query_assoc['terms'] = annot_ids.length
+		query_assoc['domains'] = domain_ids.length
 		query_assoc['max_assoc_val'] = assoc_vals.max
 		query_assoc['min_assoc_val'] = assoc_vals.min
-		query_assoc['ave_assoc_val'] = assoc_vals.inject { |sum, n| sum + n }.fdiv(assoc_vals.length)
+		query_assoc['ave_assoc_val'] = total_assocs.fdiv(assoc_vals.length)
 	elsif mode == 'preds' || mode == 'norm_preds'
-		domains = []
-		file_info.each do |info|
-			domains << info[1].split(',')
+		domain_ids = {}
+		proteins_ids = {}
+		annot_ids = {}
+		pred_values = []
+		total_preds = 0
+		file_info.each do |prot, domain_string, annotation, pred_val|
+			proteins_ids[prot] = true
+			domain_string.split(',').each do |dom_id|
+				domain_ids[dom_id] = true
+			end
+			annot_ids[annotation] = true
+			pred_val = pred_val.to_f
+			total_preds += pred_val
+			pred_values << pred_val
 		end
-		query_assoc['proteins'] = file_info.map{|a| a.first}.uniq.length
-		query_assoc['terms'] = file_info.map{|a| a[2]}.uniq.length
-		query_assoc['domains'] = domains.uniq.length
-		pred_vals = file_info.map{|a| a.last.to_f}
-		query_assoc['max_pred_val'] = pred_vals.max
-		query_assoc['min_pred_val'] = pred_vals.min
-		query_assoc['ave_pred_val'] = pred_vals.inject { |sum, n| sum + n }.fdiv(pred_vals.length)
+		query_assoc['proteins'] = proteins_ids.length
+		query_assoc['terms'] = annot_ids.length
+		query_assoc['domains'] = domain_ids.length
+		query_assoc['max_pred_val'] = pred_values.max
+		query_assoc['min_pred_val'] = pred_values.min
+		query_assoc['ave_pred_val'] = total_preds.fdiv(pred_values.length)
 	end
 end
 
@@ -363,26 +397,29 @@ combined_stats = {}
 
 load_geneAccession_protID_dictionary(options[:accessionID_dictionary], geneAccession_protID_dictionary)
 
-tag_path_info.each do |id, path|
-	if id.include?('input_cafa')
-		get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)
-	elsif id.include?('input_cath')
-		get_input_CATH_data(path, id, stats_complex, cath_storage)
-	elsif id.include?('input_networks')
-		get_input_network_data(path, id, stats_complex)
-	elsif id.include?('input_associations')
-	 	info_string = 'assocs'
-	 	get_input_assoc_predictions_data(path, id, info_string, stats_complex)
-	elsif id.include?('input_predictions')
-		info_string = 'preds'
-		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
-	elsif id.include?('input_normpreds')
-		info_string = 'norm_preds'
-		get_input_assoc_predictions_data(path, id, info_string, stats_complex)
+Benchmark.bm do |x|
+	tag_path_info.each do |id, path|
+		if id.include?('input_cafa')
+			x.report('CAFA'){get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)}
+		elsif id.include?('input_cath')
+			x.report('CATH'){get_input_CATH_data(path, id, stats_complex, cath_storage)}
+		elsif id.include?('input_networks')
+			x.report('NETW'){get_input_network_data(path, id, stats_complex)}
+		elsif id.include?('input_associations')
+		 	info_string = 'assocs'
+		 	x.report('ASSO'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+		elsif id.include?('input_predictions')
+			info_string = 'preds'
+			x.report('PRED'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+		elsif id.include?('input_normpreds')
+			info_string = 'norm_preds'
+			x.report('NORM'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+		end
 	end
+	x.report('COMB'){get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)}
 end
-get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)
 
+Process.exit
 ############################################
 #STDERR.puts JSON.pretty_generate(combined_stats)
 
@@ -428,3 +465,6 @@ container = {}
 	container[organism + '_domain_term'] = domain_term_relations
 end
 statistics_report_data(container, options[:html_file])
+
+#TODO: code is too slow when working with prediction and normpredictions files.
+#Must check how to solve this issue

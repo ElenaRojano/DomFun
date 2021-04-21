@@ -33,13 +33,14 @@ def load_proteins_file(file, annotation_types)
 	return protein_annotations, counter
 end
 
-def load_cath_data(file, category, whitelist=nil, dictionary_key='gene_name')
+def load_cath_data(file, category, whitelist=nil, dictionary_key='gene_name', categories='main')
 	if dictionary_key == 'gene_name'
 		field = 3
 	elsif dictionary_key == 'geneID' # UNIPROT entry_name
 		field = 4
 	end
 	cath_data = {}
+	cath_data_supp = {}
 	protein2gene_dict = {}
 	csv_file = CSV.open(file, :col_sep => "\t" )
 	header = true
@@ -56,14 +57,17 @@ def load_cath_data(file, category, whitelist=nil, dictionary_key='gene_name')
 		term2save = nil
 		if category == 'superfamilyID'
 			term2save = superfamilyID
+			supp_term2save = funfamID 
 		elsif category == 'funfamID'
 			term2save = funfamID
+			supp_term2save = superfamilyID 
 		end
 		add_term2dictionary(cath_data, protein_id, term2save)
+		add_term2dictionary(cath_data_supp, protein_id, supp_term2save) if categories == 'all'
 		protein2gene_dict[protein_id] = protein_alternative_name if protein_alternative_name != 'NULL'
 	end
-	cath_proteins_number = cath_data.keys.length
-	return cath_data, protein2gene_dict, cath_proteins_number
+	cath_proteins_number = cath_data.length
+	return cath_data, protein2gene_dict, cath_proteins_number, cath_data_supp
 end
 
 def invert_hash(hash)
