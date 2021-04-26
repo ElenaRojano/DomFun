@@ -98,16 +98,25 @@ def calculate_testing_proteins_stats(testing_proteins, testing_training_stats, h
 	proteins_by_organisms = testing_proteins.map{|a| a.split('_').last}
 	list_of_proteins_by_organisms = proteins_by_organisms.group_by{|e| e}.map{|k, v| [k, v.length]}.to_h
 	
-	human_testing_training_stats['testing']['proteins_geneID'] = list_of_proteins_by_organisms['HUMAN']
+	human_total_proteins = list_of_proteins_by_organisms['HUMAN']
+	human_testing_training_stats['testing']['proteins_geneID'] = human_total_proteins
 	human_testing_training_stats['testing']['proteins_UniProtID_translated'] = human_testing_proteins_translated.length
-	human_testing_training_stats['testing']['proteins_UniProtID_untranslated'] = human_testing_proteins_untranslated.length
+	human_untranslated_proteins = human_testing_proteins_untranslated.length
+	human_testing_training_stats['testing']['proteins_UniProtID_untranslated'] = human_untranslated_proteins
+	human_testing_training_stats['testing']['untranslated_proteins_percentage'] = (human_untranslated_proteins * 100).fdiv(human_total_proteins).round(2)
 	
-	testing_training_stats['testing']['proteins_geneID'] = list_of_proteins_by_organisms.values.inject{|a, b| a + b}
+	total_proteins = list_of_proteins_by_organisms.values.inject{|a, b| a + b}
+	testing_training_stats['testing']['proteins_geneID'] = total_proteins
 	testing_training_stats['testing']['proteins_UniProtID_translated'] = all_testing_proteins_translated.length
-	testing_training_stats['testing']['proteins_UniProtID_untranslated'] = all_testing_proteins_untranslated.length
+	untranslated_proteins = all_testing_proteins_untranslated.length
+	testing_training_stats['testing']['proteins_UniProtID_untranslated'] = untranslated_proteins
+	testing_training_stats['testing']['untranslated_proteins_percentage'] = (untranslated_proteins * 100).fdiv(total_proteins).round(2)
 
 	testing_storage['human'] = human_testing_proteins_translated
 	testing_storage['all'] = all_testing_proteins_translated
+
+	#Obtener numero de proteinas que tienen dominios en CATH y de ellos
+	# cuantos fueron asociados a funciones en el archivo de asociaciones
 
 end
 
@@ -258,7 +267,7 @@ def attrib_to_hash(hash, key, value={})
 	return query
 end
 
-def get_input_assoc_predictions_data(path, id, mode, stats_complex)
+def get_input_assoc_predictions_data(path, id, mode, stats_complex, assocs_storage)
 	stats = {}
 	Dir.glob(path).each do |input_file|
 		assoc_method = obtain_tag(@assoc_methods, input_file)	
@@ -266,7 +275,7 @@ def get_input_assoc_predictions_data(path, id, mode, stats_complex)
 		annot = obtain_tag(@terms, input_file)
 		file_info = load_tab_file(input_file)
 		@organisms.each do |orgtag|
-			calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
+			calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats, assocs_storage)
 		end
 	end
 	stats_complex[mode] = stats
@@ -277,7 +286,7 @@ def obtain_tag(options, string)
 	return tag
 end
 
-def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
+def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats, assocs_storage)
 	query_orgtag = attrib_to_hash(stats, orgtag, {domtag => {}})
 	query_domtag = attrib_to_hash(query_orgtag, domtag, {annot => {}})
 	query_annot = attrib_to_hash(query_domtag, annot, {assoc_method => {}})
@@ -288,6 +297,12 @@ def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
 		assoc_vals = []
 		total_assocs = 0
 		file_info.each do |annotation, domain_string, assoc_val|
+			query = assocs_storage[domain_string]
+			if query.nil?
+				assocs_storage[domain_string] = [annotation]
+			else	
+				query << annotation
+			end
 			annot_ids[annotation] = true
 			domain_ids[domain_string] = true
 			assoc_val = assoc_val.to_f
@@ -325,7 +340,7 @@ def calculate_stats(file_info, mode, domtag, orgtag, annot, assoc_method, stats)
 	end
 end
 
-def get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)
+def get_combined_stats(cath_storage, training_storage, testing_storage, assocs_storage, combined_stats)
 	@domains.each do |domtag|
 		cath_proteins = cath_storage[domtag].transform_keys{|a| a.to_s}
 		training_storage.each do |orgtag, go_type_info|
@@ -340,8 +355,28 @@ def get_combined_stats(cath_storage, training_storage, testing_storage, combined
 					query_proteins << cath_proteins[protein] unless cath_proteins[protein].nil?
 				end
 				query_domtag['proteins'] = query_proteins.length
-				query_domtag['lost_proteins(%)'] = (training_proteins.length - query_proteins.length) * 100.fdiv(training_proteins.length)
+				#query_domtag['lost_proteins'] = (training_proteins.length - query_proteins.length) * 100.fdiv(training_proteins.length)
+				query_domtag['lost_proteins'] = 100 - (query_proteins.length * 100.fdiv(training_proteins.length))
 			end
+		end
+		testing_storage.each do |orgtag, proteins|
+			query_orgtag = attrib_to_hash(combined_stats, orgtag, {domtag => {}})
+			query_domtag = attrib_to_hash(query_orgtag, domtag)
+			testing_proteins = []
+			query_testing = []
+			proteins.each do |test_prot|
+				testing_proteins << test_prot
+				query_testing << cath_proteins[test_prot] unless cath_proteins[test_prot].nil?
+			end
+			query_domtag['testing_proteins'] = query_testing.length
+			query_domtag['lost_testing_proteins'] = 100 - (query_testing.length * 100.fdiv(testing_proteins.length))
+			go_associated = []
+			all_uniq_domains = query_testing.flatten.uniq
+			all_uniq_domains.each do |domain|
+				go_associated << assocs_storage[domain] unless assocs_storage[domain].nil?
+			end
+			query_domtag['uniq_domains'] = all_uniq_domains.length
+			query_domtag['uniq_domains_with_go'] = go_associated.length
 		end
 	end
 end
@@ -376,6 +411,11 @@ OptionParser.new do |opts|
     options[:input_file] = data
   end
 
+  options[:output_file] = 'metrics.json'
+  opts.on("-o", "--output_file PATH", "Output JSON file") do |data|
+    options[:output_file] = data
+  end
+
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
@@ -389,10 +429,12 @@ end.parse!
 
 tag_path_info = load_data(options[:input_file])
 stats_complex = {}
+stats_complex = JSON.parse(File.open('metrics.json').read) if File.exists?('metrics.json') 
 geneAccession_protID_dictionary = {}
 training_storage = {}
 testing_storage = {}
 cath_storage = {}
+assocs_storage = {}
 combined_stats = {}
 
 load_geneAccession_protID_dictionary(options[:accessionID_dictionary], geneAccession_protID_dictionary)
@@ -407,23 +449,30 @@ Benchmark.bm do |x|
 			x.report('NETW'){get_input_network_data(path, id, stats_complex)}
 		elsif id.include?('input_associations')
 		 	info_string = 'assocs'
-		 	x.report('ASSO'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+		 	x.report('ASSO'){get_input_assoc_predictions_data(path, id, info_string, stats_complex, assocs_storage)}
 		elsif id.include?('input_predictions')
 			info_string = 'preds'
-			x.report('PRED'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+			x.report('PRED'){get_input_assoc_predictions_data(path, id, info_string, stats_complex, assocs_storage)}
 		elsif id.include?('input_normpreds')
 			info_string = 'norm_preds'
-			x.report('NORM'){get_input_assoc_predictions_data(path, id, info_string, stats_complex)}
+			x.report('NORM'){get_input_assoc_predictions_data(path, id, info_string, stats_complex, assocs_storage)}
 		end
 	end
-	x.report('COMB'){get_combined_stats(cath_storage, training_storage, testing_storage, combined_stats)}
+	unless cath_storage.empty? && testing_storage.empty? && training_storage.empty? && assocs_storage.empty?
+		x.report('COMB'){get_combined_stats(cath_storage, training_storage, testing_storage, assocs_storage, combined_stats)}
+		stats_complex['combined'] = combined_stats
+	end
 end
 
-Process.exit
-############################################
-#STDERR.puts JSON.pretty_generate(combined_stats)
+File.open(options[:output_file], 'w'){|f| f.print stats_complex.to_json}
 
+########################################
+# STDERR.puts JSON.pretty_generate(stats_complex)
+# exit
+
+########################################
 container = {}
+########################################
 
 @organisms.each do |organism|
 	cafa_proteins = ['cafa_proteins']
@@ -433,12 +482,46 @@ container = {}
 	protein_recovery = [['GO'] + @terms, cafa_proteins, cafa_superfamilyID, cafa_funfamID]
 
 	@terms.each do |term|
-		cafa_proteins << training_storage.dig(organism, term).map{|a| a.first}.length
-		cafa_superfamilyID << combined_stats.dig(organism, term, 'superfamilyID', 'proteins')
-		cafa_funfamID << combined_stats.dig(organism, term, 'funfamID', 'proteins')
+		cafa_proteins << stats_complex.dig('cafa', organism, 'training', term, 'proteins')
+		cafa_superfamilyID << stats_complex.dig('combined', organism, term, 'superfamilyID', 'proteins')
+		cafa_funfamID << stats_complex.dig('combined', organism, term, 'funfamID', 'proteins')
 	end
 	container[organism + '_protein_recovery'] = protein_recovery
 
+########################################
+	header = [organism]
+	total_testing = ['total_proteins']
+	total_translated = ['proteins_translated']
+	total_untranslated = ['proteins_untranslated']
+	percentage_unstranslated = ['proteins_untranslated(%)']
+	testing_domains = ['protein_domains']
+	lost_testing = ['lost_testing(%)']
+	domains_go = ['uniq_domains_testing']
+	lost_domains_go = ['uniq_domains_with_go_testing']
+	testing_data = [header, 
+		total_testing, 
+		total_translated, 
+		total_untranslated, 
+		percentage_unstranslated, 
+		testing_domains, 
+		lost_testing, 
+		domains_go,
+		lost_domains_go
+	]
+
+	@domains.each do |domtag|
+		header << domtag
+		total_testing << stats_complex.dig('cafa', organism, 'testing', 'proteins_geneID')
+		total_translated << stats_complex.dig('cafa', organism, 'testing', 'proteins_UniProtID_translated')
+		total_untranslated << stats_complex.dig('cafa', organism, 'testing', 'proteins_UniProtID_untranslated')
+		percentage_unstranslated << stats_complex.dig('cafa', organism, 'testing', 'untranslated_proteins_percentage')
+		testing_domains << stats_complex.dig('combined', organism, domtag, 'testing_proteins')
+		lost_testing << stats_complex.dig('combined', organism, domtag, 'lost_testing_proteins').round(2)
+		domains_go << stats_complex.dig('combined', organism, domtag, 'uniq_domains')
+		lost_domains_go << stats_complex.dig('combined', organism, domtag, 'uniq_domains_with_go')
+		container[organism + '_' + domtag + '_testing_data'] = testing_data
+	end
+########################################
 
 	@assoc_methods.each do |assoc_method|
 		training_gos = ['training']
@@ -453,6 +536,9 @@ container = {}
 		end
 		container[organism + '_' + assoc_method + '_go_profile'] = go_profile
 	end
+
+########################################
+
 	domain_term_relations_SF = ['domain_term_relations_superfamilyID']
 	domain_term_relations_FF = ['domain_term_relations_funfamID']
 
@@ -464,7 +550,5 @@ container = {}
 	end
 	container[organism + '_domain_term'] = domain_term_relations
 end
-statistics_report_data(container, options[:html_file])
 
-#TODO: code is too slow when working with prediction and normpredictions files.
-#Must check how to solve this issue
+statistics_report_data(container, options[:html_file])

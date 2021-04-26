@@ -3,10 +3,10 @@
     <h2 style="text-align: center; background-color:#d6eaf8">Number of proteins</h2>
 	<p>Number of CAFA training proteins with annotations in GO molecular functions (GOMF), GO biological process (GOBP) and GO cellular component (GOCC), and of these which ones have domains classified as both superfamily and FunFam.</p>
 	<%= 
-    line(id: 'human_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'})
+    line(id: 'human_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'}, title: 'Human dataset', x_label: 'Training proteins')
     %>	
     <%= 
-    line(id: 'all_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'})
+    line(id: 'all_protein_recovery', header: true, config: {'graphOrientation' => 'vertical'}, title: 'All organisms dataset', x_label: 'Training proteins')
     %>
 </div>
 
@@ -20,6 +20,20 @@
 	%>
 	<%= 
 	table(id: 'all_domain_term', header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+	end
+	%>
+</div>
+
+<h2 style="text-align: center; background-color:#d6eaf8">Testing proteins data.</h2>
+<p>Includes number of testing proteins, once translated to UniProt IDs and the number of untranslated.</p>
+	<%= 
+	table(id: 'human_superfamilyID_testing_data', header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+	end
+	%>
+	<%= 
+	table(id: 'all_funfamID_testing_data', header: true, border: 2, 
 		cell_align: %w(center, center center center center)) do |data|
 	end
 	%>
