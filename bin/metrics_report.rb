@@ -373,7 +373,7 @@ def get_combined_stats(cath_storage, training_storage, testing_storage, assocs_s
 			proteins_without_annotations, proteins_without_domains = calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
 			query_domtag['testing_proteins'] = query_testing.length
 			query_domtag['lost_testing_proteins'] = 100 - (query_testing.length * 100.fdiv(testing_proteins.length))
-			query_domtag['proteins_without_domains'] = proteins_without_domains.length
+			query_domtag['proteins_without_domains'] = proteins_without_domains
 			query_domtag['proteins_without_annotations'] = proteins_without_annotations
 		end
 	end
@@ -397,16 +397,18 @@ def calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_pro
 			end
 		end
 	end
-	domains_proteins.each do |domain, proteins|
-		annotations = assocs_storage[domain]
-		if annotations.nil?
-			domains_without_annotations << domain
+	domains_proteins.each do |domains, proteins|
+		domains.each do |domain|
+			annotations = assocs_storage[domain]
+			if annotations.nil?
+				domains_without_annotations << domain
+			end
 		end
 	end
 	domains_without_annotations.each do |domain|
 		proteins_without_annotations << domains_proteins[domain]
 	end
-	return proteins_without_annotations.length, proteins_without_domains
+	return proteins_without_annotations.length, proteins_without_domains.length
 end
 
 
@@ -520,20 +522,20 @@ container = {}
 ########################################
 	header = [organism]
 	total_testing = ['total_proteins']
-	total_translated = ['proteins_translated']
+	total_translated = ['total_proteins_translated']
 	total_untranslated = ['proteins_untranslated']
 	percentage_unstranslated = ['proteins_untranslated(%)']
-	testing_domains = ['protein_domains']
-	lost_testing = ['lost_testing(%)']
+	testing_domains = ['protein_with_domains']
 	proteins_without_domains = ['proteins_without_domains']
+	lost_testing = ['lost_testing(%)']
 	proteins_without_annotations = ['proteins_without_annotations']
+	#lost_testing,
 	testing_data = [header, 
 		total_testing, 
 		total_translated, 
 		total_untranslated, 
 		percentage_unstranslated, 
 		testing_domains, 
-		lost_testing,
 		proteins_without_domains,
 		proteins_without_annotations
 	]
@@ -545,8 +547,8 @@ container = {}
 		total_untranslated << stats_complex.dig('cafa', organism, 'testing', 'proteins_UniProtID_untranslated')
 		percentage_unstranslated << stats_complex.dig('cafa', organism, 'testing', 'untranslated_proteins_percentage')
 		testing_domains << stats_complex.dig('combined', organism, domtag, 'testing_proteins')
-		lost_testing << stats_complex.dig('combined', organism, domtag, 'lost_testing_proteins').round(2)
 		proteins_without_domains << stats_complex.dig('combined', organism, domtag, 'proteins_without_domains')
+		lost_testing << stats_complex.dig('combined', organism, domtag, 'lost_testing_proteins').round(2)
 		proteins_without_annotations << stats_complex.dig('combined', organism, domtag, 'proteins_without_annotations')
 		container[organism + '_' + domtag + '_testing_data'] = testing_data
 	end

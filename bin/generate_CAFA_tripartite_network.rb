@@ -12,6 +12,7 @@ $: << File.expand_path(File.join(ROOT_PATH, '..', 'lib', 'DomFun'))
 require 'generalMethods.rb'
 require 'optparse'
 require 'csv'
+require 'semtools'
 
 ##########################
 #METHODS
@@ -53,9 +54,15 @@ def load_cath_info(cath_file, domain_class)
 	return proteins_2_domains
 end
 
-def generate_tuples(prot_annots, prot_domains)
+def generate_tuples(prot_annots, prot_domains, go)
 	domain_tuples = {}
 	annot_tuples = {}
+	term_levels = []
+	unless go.nil?
+		terms = prot_annots.values.flatten.uniq
+		term_levels = terms.map{|a| go.get_term_level(a.to_sym)}
+		min_level = term_levels.min
+	end
 	prot_annots.each do |protID, annots|
 		domains = prot_domains[protID]
 		unless domains.nil?
@@ -68,7 +75,9 @@ def generate_tuples(prot_annots, prot_domains)
 				end
 			end
 		end
-		annots.each do |a|
+		paths = []
+		paths = annots.map{|a| go.get_parental_path(a.to_sym, :shortest_path, min_level)}.flatten if !go.nil?
+		(annots | paths).each do |a|
 			query = annot_tuples[protID]
 			if query.nil?
 				annot_tuples[protID] = [a]
@@ -88,22 +97,27 @@ OptionParser.new do |opts|
 	opts.banner = "Usage: #{__FILE__} [options]"
 
 	options[:protein_domains] = nil
-		opts.on("-a", "--protein_domains PATH", "Training proteins with CATH domains") do |data|
+	opts.on("-a", "--protein_domains PATH", "Training proteins with CATH domains") do |data|
 		options[:protein_domains] = data
 	end
 
 	options[:annotated_proteins] = nil
-		opts.on("-b", "--annotated_proteins PATH", "Training proteins with annotations") do |data|
+	opts.on("-b", "--annotated_proteins PATH", "Training proteins with annotations") do |data|
 		options[:annotated_proteins] = data
 	end
 
 	options[:domain_class] = 'funfamID'
-		opts.on("-d", "--domain_class STRING", "Domain identifiers type. Please choose funfamID or superfamilyID") do |data|
+	opts.on("-d", "--domain_class STRING", "Domain identifiers type. Please choose funfamID or superfamilyID") do |data|
 		options[:domain_class] = data
 	end
 
+	options[:gene_ontology] = nil
+	opts.on("-g", "--gene_ontology PATH", "Gene ontology file") do |data|
+		options[:gene_ontology] = data
+	end
+
 	options[:output_network] = 'tripartite_network.txt'
-		opts.on("-o", "--output_network PATH", "Output tripartite network from CAFA information") do |data|
+	opts.on("-o", "--output_network PATH", "Output tripartite network from CAFA information") do |data|
 		options[:output_network] = data
 	end
 
@@ -117,7 +131,9 @@ end.parse!
 ##########################
 #MAIN
 ##########################
+go = nil
+go = Ontology.new(file: options[:gene_ontology], load_file: true) unless options[:gene_ontology].nil?
 proteins_with_annotations = load_hash(options[:annotated_proteins], 'a')
 proteins_2_domains = load_cath_info(options[:protein_domains], options[:domain_class])
-domain_tuples, annot_tuples = generate_tuples(proteins_with_annotations, proteins_2_domains)
+domain_tuples, annot_tuples = generate_tuples(proteins_with_annotations, proteins_2_domains, go)
 build_tripartite_network(domain_tuples, annot_tuples, options[:output_network])
