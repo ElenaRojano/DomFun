@@ -364,22 +364,51 @@ def get_combined_stats(cath_storage, training_storage, testing_storage, assocs_s
 			query_domtag = attrib_to_hash(query_orgtag, domtag)
 			testing_proteins = []
 			query_testing = []
+			domains_proteins = {}
 			proteins.each do |test_prot|
 				testing_proteins << test_prot
 				query_testing << cath_proteins[test_prot] unless cath_proteins[test_prot].nil?
 			end
+
+			proteins_without_annotations, proteins_without_domains = calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
 			query_domtag['testing_proteins'] = query_testing.length
 			query_domtag['lost_testing_proteins'] = 100 - (query_testing.length * 100.fdiv(testing_proteins.length))
-			go_associated = []
-			all_uniq_domains = query_testing.flatten.uniq
-			all_uniq_domains.each do |domain|
-				go_associated << assocs_storage[domain] unless assocs_storage[domain].nil?
-			end
-			query_domtag['uniq_domains'] = all_uniq_domains.length
-			query_domtag['uniq_domains_with_go'] = go_associated.length
+			query_domtag['proteins_without_domains'] = proteins_without_domains.length
+			query_domtag['proteins_without_annotations'] = proteins_without_annotations
 		end
 	end
 end
+		
+def calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
+	proteins_without_domains = []
+	domains_without_annotations = []
+	domains_proteins = {}
+	proteins_without_annotations = []
+	proteins.each do |protein|
+		domain = cath_proteins[protein]
+		if domain.nil?
+			proteins_without_domains << protein
+		else
+			query = domains_proteins[domain]
+			if query.nil?
+				domains_proteins[domain] = [protein]
+			else
+				query << protein
+			end
+		end
+	end
+	domains_proteins.each do |domain, proteins|
+		annotations = assocs_storage[domain]
+		if annotations.nil?
+			domains_without_annotations << domain
+		end
+	end
+	domains_without_annotations.each do |domain|
+		proteins_without_annotations << domains_proteins[domain]
+	end
+	return proteins_without_annotations.length, proteins_without_domains
+end
+
 
 def statistics_report_data(container, html_file)
 	template = File.open(File.join(REPORT_FOLDER, 'statistics_report.erb')).read
@@ -496,17 +525,17 @@ container = {}
 	percentage_unstranslated = ['proteins_untranslated(%)']
 	testing_domains = ['protein_domains']
 	lost_testing = ['lost_testing(%)']
-	domains_go = ['uniq_domains_testing']
-	lost_domains_go = ['uniq_domains_with_go_testing']
+	proteins_without_domains = ['proteins_without_domains']
+	proteins_without_annotations = ['proteins_without_annotations']
 	testing_data = [header, 
 		total_testing, 
 		total_translated, 
 		total_untranslated, 
 		percentage_unstranslated, 
 		testing_domains, 
-		lost_testing, 
-		domains_go,
-		lost_domains_go
+		lost_testing,
+		proteins_without_domains,
+		proteins_without_annotations
 	]
 
 	@domains.each do |domtag|
@@ -517,8 +546,8 @@ container = {}
 		percentage_unstranslated << stats_complex.dig('cafa', organism, 'testing', 'untranslated_proteins_percentage')
 		testing_domains << stats_complex.dig('combined', organism, domtag, 'testing_proteins')
 		lost_testing << stats_complex.dig('combined', organism, domtag, 'lost_testing_proteins').round(2)
-		domains_go << stats_complex.dig('combined', organism, domtag, 'uniq_domains')
-		lost_domains_go << stats_complex.dig('combined', organism, domtag, 'uniq_domains_with_go')
+		proteins_without_domains << stats_complex.dig('combined', organism, domtag, 'proteins_without_domains')
+		proteins_without_annotations << stats_complex.dig('combined', organism, domtag, 'proteins_without_annotations')
 		container[organism + '_' + domtag + '_testing_data'] = testing_data
 	end
 ########################################
