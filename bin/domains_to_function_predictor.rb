@@ -18,6 +18,7 @@ require "statistics2"
 require "terminal-table"
 require 'report_html'
 require 'parallel'
+require 'semtools'
 
 ##########################
 #METHODS
@@ -169,6 +170,32 @@ def scoring_funsys(function_to_domains, domain_annotation_matrix, scoring_system
   end
 end
 
+def get_prediction_summary(ont, prot_predictions, profile_summary)
+  # predictions => [[protein, domains_data, funsys, score]]
+  profile = [] 
+  scores = {}
+  protein = nil
+  func_dom = {}
+  prot_predictions.each do |prot, domains_data, funsys, score|
+    protein = prot
+    funsys = funsys.to_sym
+    profile << funsys
+    scores[funsys] = score
+    func_dom[funsys] = domains_data
+  end
+  if profile_summary == 'max'
+    new_profile = ont.clean_profile_by_score(profile, scores, byMax: true)
+  elsif profile_summary == 'min'
+    new_profile = ont.clean_profile_by_score(profile, scores, byMax: false)
+  else
+    new_profile = clean_profile(profile)
+  end
+  summarized_predictions = []
+  new_profile.each do |funsys|
+    summarized_predictions << [protein, func_dom[funsys], funsys.to_s, scores[funsys]]
+  end
+  return summarized_predictions
+end
 
 def report_data(predictions, html_file)
   container = {:predictions => predictions }
@@ -221,6 +248,11 @@ OptionParser.new do |opts|
     options[:proteins_2predict] = data
   end
 
+  options[:obo_file] = nil
+  opts.on("-b", "--obo_file PATH", "Path to obo file." ) do |item|
+    options[:obo_file] = item
+  end
+
   options[:threads] = 0
   opts.on("-P", "--threads INTEGER", "Number of threads to parallelize") do |data|
     options[:threads] = data.to_i - 1
@@ -234,6 +266,11 @@ OptionParser.new do |opts|
   options[:association_threshold] = nil
   opts.on("-T", "--association_threshold FLOAT", "Association value threshold") do |association_threshold|
     options[:association_threshold] = association_threshold.to_f
+  end
+
+  options[:profile_summary] = nil
+  opts.on("-s", "--profile_summary STRING", "Removes parental-child relations. Values: min, max, child") do |item|
+    options[:profile_summary] = item
   end
 
   opts.on_tail("-h", "--help", "Show this message") do
@@ -272,6 +309,9 @@ end
 domain_to_pathways_associations = load_domain_to_pathway_association(options[:input_associations], options[:association_threshold], dm_white_list)
 dm_white_list = nil
 
+
+ont = Ontology.new(file: options[:obo_file], load_file: true) if !options[:profile_summary].nil?
+
 # 4. Prediction
 #handler = File.open(options[:output_file], 'w')
 gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'
@@ -298,15 +338,19 @@ all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[
       function_to_domains.each do |funsys, domains_data|
         score = domains_data.pop
         #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
-        final_predictions << [protein.to_s, domains_data.join(','), funsys, score]
+        final_predictions << [protein, domains_data, funsys, score]
       end
+      final_predictions = get_prediction_summary(ont, final_predictions, options[:profile_summary]) if !options[:profile_summary].nil?
+
       final_predictions
     end
 end
+
+
 all_predictions.each do |protein_predictions|
   unless protein_predictions.nil?
-    protein_predictions.each do |info|
-      puts info.join("\t")
+    protein_predictions.each do |protein, domains_data, funsys, score|
+      puts [protein.to_s, domains_data.join(','), funsys, score].join("\t")
     end
   end
 end
