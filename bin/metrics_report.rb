@@ -212,6 +212,63 @@ def get_input_CATH_data(path, id, stats_complex, cath_storage)
 	stats_complex['domains'] = domains_stats
 end
 
+def get_input_tuples_data(path, id, stats_complex)
+	tuples_data_complex = {}
+	@organisms.each do |orgtag|
+		tuples_data_complex[orgtag] = {}
+		Dir.glob(path).each do |input_file|
+			domtag = obtain_tag(@domains, input_file)	
+			annot = obtain_tag(@terms, input_file)	
+			tuples_info = load_tuples_file(input_file)
+			calculate_tuples_stats(tuples_data_complex[orgtag], domtag, orgtag, annot, tuples_info)
+		end
+	end
+	stats_complex['tuples'] = tuples_data_complex
+end
+
+def load_tuples_file(input_file)
+	tuples_info = {}
+	File.open(input_file).each do |info|
+		info.chomp!
+		domain, protein, annot_info = info.split("\t")
+		query_domain = tuples_info[domain]
+		if query_domain.nil?
+			tuples_info[domain] = {annot_info => [protein]}
+		else
+			query_annot = query_domain[annot_info]
+			if query_annot.nil?
+				query_domain[annot_info] = [protein]
+			else
+				query_annot << protein
+			end
+		end
+	end
+	return tuples_info
+end		
+
+def calculate_tuples_stats(tuples_data_complex, domtag, orgtag, annot, tuples_info)
+	query_domtag = attrib_to_hash(tuples_data_complex, domtag, {annot => {}})
+	query_annot = attrib_to_hash(query_domtag, annot)
+	proteing_groups = []
+	tuples_info.each do |domain, annot_data|
+		annot_data.each do |annot, proteins|
+			proteing_groups << proteins.length
+		end
+	end
+	mean_proteins_per_pair = proteing_groups.inject{|a, sum| a + sum}.fdiv(proteing_groups.length)
+	proteing_groups.sort!
+	if proteing_groups.length % 2 != 0
+		median_proteins_per_pair = proteing_groups[proteing_groups.length / 2]
+	else
+		valA = proteing_groups[proteing_groups.length / 2]
+		valB = proteing_groups[(proteing_groups.length / 2) - 1] 
+		median_proteins_per_pair = (valA + valB).fdiv(2)
+	end
+	query_annot['mean_proteins_per_pair'] = mean_proteins_per_pair
+	query_annot['median_proteins_per_pair'] = median_proteins_per_pair
+end
+
+
 def get_input_network_data(path, id, stats_complex)
 	network_data_complex = {}
 	@organisms.each do |orgtag|
@@ -362,54 +419,69 @@ def get_combined_stats(cath_storage, training_storage, testing_storage, assocs_s
 		testing_storage.each do |orgtag, proteins|
 			query_orgtag = attrib_to_hash(combined_stats, orgtag, {domtag => {}})
 			query_domtag = attrib_to_hash(query_orgtag, domtag)
-			testing_proteins = []
-			query_testing = []
+			proteins_without_domains = []
+			proteins_with_domains = []
 			domains_proteins = {}
+			#query_testing = []
 			proteins.each do |test_prot|
-				testing_proteins << test_prot
-				query_testing << cath_proteins[test_prot] unless cath_proteins[test_prot].nil?
+				if cath_proteins[test_prot].nil?
+					proteins_without_domains << test_prot
+				else
+					proteins_with_domains << test_prot
+					domains = cath_proteins[test_prot]
+					domains_proteins[test_prot] = domains
+				end
 			end
-
-			proteins_without_annotations, proteins_without_domains = calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
-			query_domtag['testing_proteins'] = query_testing.length
-			query_domtag['lost_testing_proteins'] = 100 - (query_testing.length * 100.fdiv(testing_proteins.length))
-			query_domtag['proteins_without_domains'] = proteins_without_domains
-			query_domtag['proteins_without_annotations'] = proteins_without_annotations
+			proteins_without_domains_annotated = []
+			proteins_with_domains_annotated = []
+			domains_proteins.each do |test_prot, domains|
+				assoc_functions = domains.map{|domain| assocs_storage[domain]}
+				if assoc_functions.count{|assoc| assoc.nil?} == domains.length
+					proteins_without_domains_annotated << test_prot
+				else
+					proteins_with_domains_annotated << test_prot
+				end
+			end
+			query_domtag['testing_proteins'] = proteins.length
+			query_domtag['proteins_with_domains'] = proteins_with_domains.length
+			query_domtag['proteins_without_domains'] = proteins_without_domains.length
+			query_domtag['proteins_with_domains_annotaded'] = proteins_with_domains_annotated.length
+			query_domtag['proteins_without_domains_annotaded'] = proteins_without_domains_annotated.length
 		end
 	end
 end
 		
-def calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
-	proteins_without_domains = []
-	domains_without_annotations = []
-	domains_proteins = {}
-	proteins_without_annotations = []
-	proteins.each do |protein|
-		domain = cath_proteins[protein]
-		if domain.nil?
-			proteins_without_domains << protein
-		else
-			query = domains_proteins[domain]
-			if query.nil?
-				domains_proteins[domain] = [protein]
-			else
-				query << protein
-			end
-		end
-	end
-	domains_proteins.each do |domains, proteins|
-		domains.each do |domain|
-			annotations = assocs_storage[domain]
-			if annotations.nil?
-				domains_without_annotations << domain
-			end
-		end
-	end
-	domains_without_annotations.each do |domain|
-		proteins_without_annotations << domains_proteins[domain]
-	end
-	return proteins_without_annotations.length, proteins_without_domains.length
-end
+# def calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
+# 	proteins_without_domains = []
+# 	domains_without_annotations = []
+# 	domains_proteins = {}
+# 	proteins_without_annotations = []
+# 	proteins.each do |protein|
+# 		domain = cath_proteins[protein]
+# 		if domain.nil?
+# 			proteins_without_domains << protein
+# 		else
+# 			query = domains_proteins[domain]
+# 			if query.nil?
+# 				domains_proteins[domain] = [protein]
+# 			else
+# 				query << protein
+# 			end
+# 		end
+# 	end
+# 	domains_proteins.each do |domains, proteins|
+# 		domains.each do |domain|
+# 			annotations = assocs_storage[domain]
+# 			if annotations.nil?
+# 				domains_without_annotations << domain
+# 			end
+# 		end
+# 	end
+# 	domains_without_annotations.uniq.each do |domain|
+# 		proteins_without_annotations << domains_proteins[domain]
+# 	end
+# 	return proteins_without_annotations.length, proteins_without_domains.length
+# end
 
 
 def statistics_report_data(container, html_file)
@@ -476,6 +548,8 @@ Benchmark.bm do |x|
 			x.report('CAFA'){get_input_cafa_data(path, id, geneAccession_protID_dictionary, stats_complex, training_storage, testing_storage)}
 		elsif id.include?('input_cath')
 			x.report('CATH'){get_input_CATH_data(path, id, stats_complex, cath_storage)}
+		elsif id.include?('input_tuples')
+			x.report('TUPL'){get_input_tuples_data(path, id, stats_complex)}
 		elsif id.include?('input_networks')
 			x.report('NETW'){get_input_network_data(path, id, stats_complex)}
 		elsif id.include?('input_associations')
@@ -525,19 +599,20 @@ container = {}
 	total_translated = ['total_proteins_translated']
 	total_untranslated = ['proteins_untranslated']
 	percentage_unstranslated = ['proteins_untranslated(%)']
-	testing_domains = ['protein_with_domains']
+	proteins_with_domains = ['proteins_with_domains']
 	proteins_without_domains = ['proteins_without_domains']
-	lost_testing = ['lost_testing(%)']
-	proteins_without_annotations = ['proteins_without_annotations']
-	#lost_testing,
+	proteins_with_domains_annotaded = ['proteins_with_domains_annotated']
+	proteins_without_domains_annotaded = ['proteins_without_domains_annotated']
+	#total_lost_training_percentage = ['total_lost_training(%)']
 	testing_data = [header, 
 		total_testing, 
 		total_translated, 
 		total_untranslated, 
 		percentage_unstranslated, 
-		testing_domains, 
-		proteins_without_domains,
-		proteins_without_annotations
+		proteins_with_domains, 
+		proteins_without_domains, 
+		proteins_with_domains_annotaded, 
+		proteins_without_domains_annotaded
 	]
 
 	@domains.each do |domtag|
@@ -546,10 +621,10 @@ container = {}
 		total_translated << stats_complex.dig('cafa', organism, 'testing', 'proteins_UniProtID_translated')
 		total_untranslated << stats_complex.dig('cafa', organism, 'testing', 'proteins_UniProtID_untranslated')
 		percentage_unstranslated << stats_complex.dig('cafa', organism, 'testing', 'untranslated_proteins_percentage')
-		testing_domains << stats_complex.dig('combined', organism, domtag, 'testing_proteins')
+		proteins_with_domains << stats_complex.dig('combined', organism, domtag, 'proteins_with_domains')
 		proteins_without_domains << stats_complex.dig('combined', organism, domtag, 'proteins_without_domains')
-		lost_testing << stats_complex.dig('combined', organism, domtag, 'lost_testing_proteins').round(2)
-		proteins_without_annotations << stats_complex.dig('combined', organism, domtag, 'proteins_without_annotations')
+		proteins_with_domains_annotaded << stats_complex.dig('combined', organism, domtag, 'proteins_with_domains_annotaded')
+		proteins_without_domains_annotaded << stats_complex.dig('combined', organism, domtag, 'proteins_without_domains_annotaded')
 		container[organism + '_' + domtag + '_testing_data'] = testing_data
 	end
 ########################################
@@ -573,13 +648,34 @@ container = {}
 	domain_term_relations_SF = ['domain_term_relations_superfamilyID']
 	domain_term_relations_FF = ['domain_term_relations_funfamID']
 
-	domain_term_relations = [['GO'] + @terms, domain_term_relations_SF, domain_term_relations_FF]
+	domain_term_relations = [[organism] + @terms, domain_term_relations_SF, domain_term_relations_FF]
 
 	@terms.each do |term|
 	 	domain_term_relations_SF << stats_complex.dig('network', organism, 'superfamilyID', term, 'domain-term')
 	 	domain_term_relations_FF << stats_complex.dig('network', organism, 'funfamID', term, 'domain-term')
 	end
 	container[organism + '_domain_term'] = domain_term_relations
+
+########################################
+
+	mean_proteins_per_pair_sf = ['mean_proteins_per_pair_sf']
+	mean_proteins_per_pair_ff = ['mean_proteins_per_pair_ff']
+	median_proteins_per_pair_sf = ['median_proteins_per_pair_sf']
+	median_proteins_per_pair_ff = ['median_proteins_per_pair_ff']
+
+	proteins_per_pair = [[organism] + @terms, mean_proteins_per_pair_sf, 
+		mean_proteins_per_pair_ff,
+		median_proteins_per_pair_sf,
+		median_proteins_per_pair_ff
+	]
+
+	@terms.each do |term|
+	 	mean_proteins_per_pair_sf << stats_complex.dig('tuples', organism, 'superfamilyID', term, 'mean_proteins_per_pair')
+	 	mean_proteins_per_pair_ff << stats_complex.dig('tuples', organism, 'funfamID', term, 'mean_proteins_per_pair')
+	 	median_proteins_per_pair_sf << stats_complex.dig('tuples', organism, 'superfamilyID', term, 'median_proteins_per_pair')
+	 	median_proteins_per_pair_ff << stats_complex.dig('tuples', organism, 'funfamID', term, 'median_proteins_per_pair')
+	end
+	container[organism + '_proteins_per_pair'] = proteins_per_pair
 end
 
 statistics_report_data(container, options[:html_file])
