@@ -1,38 +1,3 @@
-def load_proteins_file(file, annotation_types)
-	protein_annotations = {}
-	annotation_types.each do |type| # initialize annotation hashes
-		protein_annotations[type] = {}
-	end
-	fields_to_split = annotation_types.length 
-	counter = 0
-	File.open(file).each do |line|
-		line.chomp!
-		if counter == 0
-			counter += 1
-			next
-		end
-		line.gsub!(' ', '')
-		fields = line.split("\t", fields_to_split + 2) #Sum according to the total of GO subontologies -1
-		protID = fields.shift.to_sym
-		annotation_types.each_with_index do |type, i|
-			annotations = fields[i].split(/[;]/)
-			if !annotations.empty?
-				if type.include?('go')
-					go_annotations = []
-					annotations.each do |go_term|
-						go_annotations << go_term unless go_term.nil?	
-					end
-					protein_annotations[type][protID] = go_annotations
-				else
-					protein_annotations[type][protID] = annotations
-				end
-			end
-		end
-		counter += 1
-	end
-	return protein_annotations, counter
-end
-
 def load_cath_data(file, category, whitelist=nil, dictionary_key='gene_name', categories='main')
 	if dictionary_key == 'gene_name'
 		field = 3

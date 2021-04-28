@@ -25,6 +25,21 @@
 	%>
 </div>
 
+<div>
+<h2 style="text-align: center; background-color:#d6eaf8">Average and median of proteins per pair.</h2>
+<p>Includes average and median of connections between CAFA 3 training proteins and protein domain (superfamilies and FunFams) from CATH-Gene3D.</p>
+	<%= 
+	table(id: 'human_proteins_per_pair', header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+	end
+	%>
+	<%= 
+	table(id: 'all_proteins_per_pair', header: true, border: 2, 
+		cell_align: %w(center, center center center center)) do |data|
+	end
+	%>
+</div>
+
 <h2 style="text-align: center; background-color:#d6eaf8">Testing proteins data.</h2>
 <p>Includes number of testing proteins, once translated to UniProt IDs and the number of untranslated.</p>
 	<%= 
