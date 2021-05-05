@@ -291,7 +291,6 @@ end.parse!
 ##########################
 #MAIN
 ##########################
-
 # 1. Load protein(s) to predict
 multiple_proteins = []
 File.open(options[:proteins_2predict]).each do |line|
@@ -323,7 +322,7 @@ ont = Ontology.new(file: options[:obo_file], load_file: true) if !options[:profi
 # 4. Prediction
 #handler = File.open(options[:output_file], 'w')
 gene2protein = invert_hash(protein2gene) if options[:identifier_mode] == 'mixed'
-all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[:threads]) do |protein|
+all_predictions = Parallel.map(options[:proteins_2predict], in_processes: options[:threads]) do |protein|
   domains = get_protein_domains(cath_data, protein, gene2protein, options[:identifier_mode])
   if domains.empty?
     nil
