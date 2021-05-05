@@ -264,8 +264,8 @@ def calculate_tuples_stats(tuples_data_complex, domtag, orgtag, annot, tuples_in
 		valB = proteing_groups[(proteing_groups.length / 2) - 1] 
 		median_proteins_per_pair = (valA + valB).fdiv(2)
 	end
-	query_annot['mean_proteins_per_pair'] = mean_proteins_per_pair
-	query_annot['median_proteins_per_pair'] = median_proteins_per_pair
+	query_annot['mean_proteins_per_pair'] = mean_proteins_per_pair.round(2)
+	query_annot['median_proteins_per_pair'] = median_proteins_per_pair.round(2)
 end
 
 
@@ -450,39 +450,6 @@ def get_combined_stats(cath_storage, training_storage, testing_storage, assocs_s
 		end
 	end
 end
-		
-# def calculate_lost_protein_domain_annotations(proteins, assocs_storage, cath_proteins)
-# 	proteins_without_domains = []
-# 	domains_without_annotations = []
-# 	domains_proteins = {}
-# 	proteins_without_annotations = []
-# 	proteins.each do |protein|
-# 		domain = cath_proteins[protein]
-# 		if domain.nil?
-# 			proteins_without_domains << protein
-# 		else
-# 			query = domains_proteins[domain]
-# 			if query.nil?
-# 				domains_proteins[domain] = [protein]
-# 			else
-# 				query << protein
-# 			end
-# 		end
-# 	end
-# 	domains_proteins.each do |domains, proteins|
-# 		domains.each do |domain|
-# 			annotations = assocs_storage[domain]
-# 			if annotations.nil?
-# 				domains_without_annotations << domain
-# 			end
-# 		end
-# 	end
-# 	domains_without_annotations.uniq.each do |domain|
-# 		proteins_without_annotations << domains_proteins[domain]
-# 	end
-# 	return proteins_without_annotations.length, proteins_without_domains.length
-# end
-
 
 def statistics_report_data(container, html_file)
 	template = File.open(File.join(REPORT_FOLDER, 'statistics_report.erb')).read
