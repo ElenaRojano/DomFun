@@ -32,6 +32,7 @@ def get_protein_domains(cath_data, protein, gene2protein, identifier_mode)
       proteins.each do |protein|
         domains_to_predict.concat(cath_data[protein])
       end
+      domains_to_predict.uniq!
     else
       domains_to_predict = cath_data[protein]
     end
@@ -39,7 +40,7 @@ def get_protein_domains(cath_data, protein, gene2protein, identifier_mode)
     domains_to_predict = cath_data[protein]
   end
   domains_to_predict = [] if domains_to_predict.nil?
-  return domains_to_predict.uniq
+  return domains_to_predict
 end
 
 def load_domain_to_pathway_association(associations_file, threshold, white_list=nil)
@@ -109,6 +110,8 @@ def generate_domain_annotation_matrix(function_to_domains, association_scores, d
   # #info2predict = hpo list from user
   # #hpo_associated_regions = [[chr, start, stop, [hpos_list], [weighted_association_scores]]]
   domain_annotation_matrix = []
+  #domain_annotation_matrix =  NMatrix.zeros(function_to_domains.length, domains_to_predict.length)
+  #i = 0
   function_to_domains.each do |function_ID, domains_list|
     row = []
     domains_to_predict.each do |user_domain|
@@ -120,7 +123,12 @@ def generate_domain_annotation_matrix(function_to_domains, association_scores, d
       end
     end
     domain_annotation_matrix << row
+    #i += 1
   end
+  # domain_annotation_matrix.each do |row|
+  #   STDERR.puts row.inspect
+  # end
+  # Process.exit
   return domain_annotation_matrix
 end
 
@@ -296,7 +304,7 @@ pt_white_list = {}
 options[:proteins_2predict].each do |pt|
   pt_white_list[pt] = true
 end
-cath_data, protein2gene, cath_proteins_number, cath_data_supp = load_cath_data(options[:protein_domains_file], options[:domain_category], pt_white_list)
+cath_data, protein2gene, _, _ = load_cath_data(options[:protein_domains_file], options[:domain_category], pt_white_list)
 pt_white_list = nil
 
 # 3. Load domain-FunSys associations
@@ -338,7 +346,8 @@ all_predictions = Parallel.map(options[:proteins_2predict], in_process: options[
       function_to_domains.each do |funsys, domains_data|
         score = domains_data.pop
         #handler.puts "#{protein}\t#{domains_data.join(',')}\t#{funsys}\t#{score}"
-        final_predictions << [protein, domains_data, funsys, score]
+        #final_predictions << [protein, domains_data, funsys, score]
+        final_predictions << [protein, '-', funsys, score]
       end
       final_predictions = get_prediction_summary(ont, final_predictions, options[:profile_summary]) if !options[:profile_summary].nil?
 
@@ -350,7 +359,8 @@ end
 all_predictions.each do |protein_predictions|
   unless protein_predictions.nil?
     protein_predictions.each do |protein, domains_data, funsys, score|
-      puts [protein.to_s, domains_data.join(','), funsys, score].join("\t")
+      #puts [protein.to_s, domains_data.join(','), funsys, score].join("\t")
+      puts [protein.to_s, domains_data, funsys, score].join("\t")
     end
   end
 end

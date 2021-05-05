@@ -51,9 +51,9 @@ end
 def add_term2dictionary(dict, key, term)
 	query = dict[key]
 	if query.nil?
-        	dict[key] = [term]
+        dict[key] = [term]
 	else
-		query << term
+		query << term if !query.include?(term)
 	end
 end
 
