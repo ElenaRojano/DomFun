@@ -107,7 +107,7 @@ end
 config_filenames = []
 options[:go_subontology].each do |subontology|
 	lists_filename = [subontology, options[:taxon_category], label_benchmark_type].join('_') + '.txt'
-	bootstrap = [subontology, options[:taxon_category], 'type' + options[:evaluation_mode]].join('_') + '.mat'
+	bootstrap = [subontology, options[:taxon_category], 'type' + options[:benchmark_type]].join('_') + '.mat'
 	filepath = options[:config_output] + subontology + '.job'
 	config_filenames << File.basename(filepath)
 	File.open(filepath, 'w') do |f|

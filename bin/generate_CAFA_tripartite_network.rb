@@ -49,7 +49,6 @@ def load_cath_info(cath_file, domain_class)
 		else
 			query << domain_type
 		end
-
 	end
 	return proteins_2_domains
 end
