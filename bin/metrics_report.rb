@@ -18,7 +18,7 @@ require 'json'
 require 'benchmark'
 
 @assoc_methods = ['jaccard', 'simpson', 'hypergeometric', 'pcc']
-@terms = ['GOMF', 'GOBP', 'GOCC']
+@terms = ['GOMF', 'GOBP', 'GOCC', 'KEGG', 'REACTOME']
 @domains = ['superfamilyID', 'funfamID']
 @organisms = ['all', 'human']
 
